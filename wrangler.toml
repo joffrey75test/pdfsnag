@@ -1,10 +1,28 @@
 name = "pdfsnag"
-main = "src/worker.js"
+main = "src/index.ts"
 compatibility_date = "2026-02-28"
 
 [assets]
 directory = "./public"
 binding = "ASSETS"
 
+[[d1_databases]]
+binding = "DB"
+database_name = "snag_db"
+database_id = "a4ab1da6-94e1-467b-9f3e-970aee1ab4f7"
+
+[[r2_buckets]]
+binding = "FILES"
+bucket_name = "pdfsnag-storage"
+
 [env.staging]
 name = "pdfsnag-staging"
+
+[[env.staging.d1_databases]]
+binding = "DB"
+database_name = "snag_db"
+database_id = "a4ab1da6-94e1-467b-9f3e-970aee1ab4f7"
+
+[[env.staging.r2_buckets]]
+binding = "FILES"
+bucket_name = "pdfsnag-storage"

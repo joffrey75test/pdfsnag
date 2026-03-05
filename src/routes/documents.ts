@@ -1,23 +1,26 @@
-function isObject(value) {
+import { Hono } from "hono";
+import type { AppEnv } from "../services/db";
+
+function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function isFiniteNumber(value) {
+function isFiniteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
 }
 
-function isIsoDateTime(value) {
+function isIsoDateTime(value: unknown) {
   if (typeof value !== "string") return false;
   const parsed = Date.parse(value);
   return Number.isFinite(parsed);
 }
 
-function hasOnlyAllowedKeys(obj, allowedKeys) {
+function hasOnlyAllowedKeys(obj: Record<string, unknown>, allowedKeys: string[]) {
   return Object.keys(obj).every((key) => allowedKeys.includes(key));
 }
 
-function validateCloudAnnotation(payload) {
-  const errors = [];
+function validateCloudAnnotation(payload: unknown) {
+  const errors: string[] = [];
   const requiredRoot = [
     "id",
     "documentId",
@@ -49,7 +52,11 @@ function validateCloudAnnotation(payload) {
   if (!Number.isInteger(payload.version) || payload.version < 1) errors.push("version must be an integer >= 1.");
   if (!isIsoDateTime(payload.createdAt)) errors.push("createdAt must be a valid ISO date-time string.");
   if (!isIsoDateTime(payload.updatedAt)) errors.push("updatedAt must be a valid ISO date-time string.");
-  if (!["active", "deleted", "archived"].includes(payload.status)) {
+  if (![
+    "active",
+    "deleted",
+    "archived",
+  ].includes(payload.status as string)) {
     errors.push("status must be one of: active, deleted, archived.");
   }
   if ("deletedAt" in payload && !isIsoDateTime(payload.deletedAt)) {
@@ -71,7 +78,7 @@ function validateCloudAnnotation(payload) {
       if (!(field in geometry)) errors.push(`Missing required field: geometry.${field}`);
     }
 
-    if (!["pdf", "viewport"].includes(geometry.unit)) {
+    if (!["pdf", "viewport"].includes(geometry.unit as string)) {
       errors.push("geometry.unit must be 'pdf' or 'viewport'.");
     }
     if (!Array.isArray(geometry.polygon) || geometry.polygon.length < 3) {
@@ -124,7 +131,7 @@ function validateCloudAnnotation(payload) {
     if (!isFiniteNumber(style.strokeWidth) || style.strokeWidth <= 0) {
       errors.push("style.strokeWidth must be a number > 0.");
     }
-    if ("strokeStyle" in style && !["solid", "dashed", "dotted"].includes(style.strokeStyle)) {
+    if ("strokeStyle" in style && !["solid", "dashed", "dotted"].includes(style.strokeStyle as string)) {
       errors.push("style.strokeStyle must be one of: solid, dashed, dotted.");
     }
     if (!isFiniteNumber(style.opacity) || style.opacity < 0 || style.opacity > 1) {
@@ -206,7 +213,7 @@ function validateCloudAnnotation(payload) {
         if (!isIsoDateTime(item.updatedAt)) {
           errors.push(`discussion[${i}].updatedAt must be a valid ISO date-time string.`);
         }
-        if (!["active", "deleted"].includes(item.status)) {
+        if (!["active", "deleted"].includes(item.status as string)) {
           errors.push(`discussion[${i}].status must be one of: active, deleted.`);
         }
       }
@@ -216,42 +223,20 @@ function validateCloudAnnotation(payload) {
   return errors;
 }
 
-async function handleCloudAnnotationPost(request) {
-  let payload;
+export const documentsRouter = new Hono<AppEnv>();
+
+documentsRouter.post("/annotations/cloud", async (c) => {
+  let payload: unknown;
   try {
-    payload = await request.json();
+    payload = await c.req.json();
   } catch {
-    return Response.json({ ok: false, errors: ["Invalid JSON body."] }, { status: 400 });
+    return c.json({ ok: false, errors: ["Invalid JSON body."] }, 400);
   }
 
   const errors = validateCloudAnnotation(payload);
   if (errors.length > 0) {
-    return Response.json({ ok: false, errors }, { status: 400 });
+    return c.json({ ok: false, errors }, 400);
   }
 
-  // Data is schema-valid and ready to be inserted in DB.
-  return Response.json({ ok: true, annotation: payload }, { status: 201 });
-}
-
-export default {
-  async fetch(request, env) {
-    const url = new URL(request.url);
-
-    if (url.pathname === "/api/annotations/cloud" && request.method === "POST") {
-      return handleCloudAnnotationPost(request);
-    }
-
-    if (url.pathname === "/") {
-      return Response.redirect(new URL("/app/", url), 302);
-    }
-    if (url.pathname === "/app") {
-      return Response.redirect(new URL("/app/", url), 302);
-    }
-
-    let res = await env.ASSETS.fetch(request);
-    if (res.status === 404 && url.pathname.startsWith("/app/") && !/\.[a-zA-Z0-9]+$/.test(url.pathname)) {
-      res = await env.ASSETS.fetch(new Request(new URL("/app/index.html", url), request));
-    }
-    return res;
-  },
-};
+  return c.json({ ok: true, annotation: payload }, 201);
+});
