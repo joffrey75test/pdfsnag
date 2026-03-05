@@ -11,7 +11,8 @@
     "deploy:staging": "npx wrangler deploy --env staging",
     "types": "npx wrangler types",
     "pdfjs:copy": "node scripts/copy-pdfjs.mjs",
-    "bootstrap:ged": "node scripts/bootstrap-ged-tokens.mjs"
+    "bootstrap:ged": "node scripts/bootstrap-ged-tokens.mjs",
+    "migrate:local": "./scripts/run-migrations-local.sh"
   },
   "private": true,
   "keywords": [],
