@@ -1,0 +1,22 @@
+{
+  "name": "nouveau-projet",
+  "version": "1.0.0",
+  "description": "Cloudflare Workers project",
+  "main": "src/worker.js",
+  "scripts": {
+    "dev": "npx wrangler dev --port 8787",
+    "deploy": "npx wrangler deploy",
+    "types": "npx wrangler types",
+    "pdfjs:copy": "node scripts/copy-pdfjs.mjs"
+  },
+  "private": true,
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "pdfjs-dist": "^5.4.624",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4"
+  }
+}
