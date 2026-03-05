@@ -1,0 +1,63 @@
+{
+  "id": "cld_2f5ccfbe-8a48-4e46-9a13-1319ff2d5f8a",
+  "documentId": "doc_8b43c92a",
+  "page": 3,
+  "type": "cloud",
+  "geometry": {
+    "unit": "pdf",
+    "polygon": [
+      { "x": 120.4, "y": 86.2 },
+      { "x": 168.8, "y": 82.1 },
+      { "x": 210.3, "y": 101.7 },
+      { "x": 206.9, "y": 142.4 },
+      { "x": 162.6, "y": 153.8 },
+      { "x": 126.2, "y": 132.5 }
+    ],
+    "bbox": {
+      "x": 120.4,
+      "y": 82.1,
+      "width": 89.9,
+      "height": 71.7
+    },
+    "rotation": 0
+  },
+  "style": {
+    "strokeColor": "#ff7a00",
+    "strokeWidth": 2,
+    "strokeStyle": "solid",
+    "opacity": 1,
+    "cloudIntensity": 0.55
+  },
+  "content": {
+    "text": "Zone a verifier",
+    "tags": ["revision", "important"]
+  },
+  "author": {
+    "userId": "usr_4c1f9d",
+    "name": "Joffrey"
+  },
+  "discussion": [
+    {
+      "id": "cmt_001",
+      "parentId": null,
+      "text": "Verifier cet angle.",
+      "author": { "userId": "usr_4c1f9d", "name": "Joffrey" },
+      "createdAt": "2026-03-05T14:20:00Z",
+      "updatedAt": "2026-03-05T14:20:00Z",
+      "status": "active"
+    },
+    {
+      "id": "cmt_002",
+      "parentId": "cmt_001",
+      "text": "OK, je prends ce point.",
+      "author": { "userId": "usr_2a88b1", "name": "Alice" },
+      "createdAt": "2026-03-05T14:25:00Z",
+      "updatedAt": "2026-03-05T14:25:00Z",
+      "status": "active"
+    }
+  ],
+  "status": "active",
+  "version": 1,
+  "createdAt": "2026-03-05T14:20:00Z",
+  "updatedAt": "2026-03-05T14:20:00Z"
+}

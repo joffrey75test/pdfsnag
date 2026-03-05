@@ -1,0 +1,185 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pdfsnag.local/schemas/cloud-annotation.schema.json",
+  "title": "CloudAnnotation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "documentId",
+    "page",
+    "type",
+    "geometry",
+    "style",
+    "status",
+    "version",
+    "createdAt",
+    "updatedAt"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "documentId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "page": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "type": {
+      "const": "cloud"
+    },
+    "geometry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["unit", "polygon", "bbox", "rotation"],
+      "properties": {
+        "unit": {
+          "type": "string",
+          "enum": ["pdf", "viewport"]
+        },
+        "polygon": {
+          "type": "array",
+          "minItems": 3,
+          "items": {
+            "$ref": "#/$defs/point"
+          }
+        },
+        "bbox": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["x", "y", "width", "height"],
+          "properties": {
+            "x": { "type": "number" },
+            "y": { "type": "number" },
+            "width": { "type": "number", "exclusiveMinimum": 0 },
+            "height": { "type": "number", "exclusiveMinimum": 0 }
+          }
+        },
+        "rotation": {
+          "type": "number"
+        }
+      }
+    },
+    "style": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["strokeColor", "strokeWidth", "strokeStyle", "opacity", "cloudIntensity"],
+      "properties": {
+        "strokeColor": {
+          "type": "string",
+          "pattern": "^#[0-9a-fA-F]{6}$"
+        },
+        "strokeWidth": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "strokeStyle": {
+          "type": "string",
+          "enum": ["solid", "dashed", "dotted"]
+        },
+        "opacity": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "cloudIntensity": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      }
+    },
+    "content": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "text": {
+          "type": "string"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "discussion": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/discussionItem"
+      }
+    },
+    "author": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["userId"],
+      "properties": {
+        "userId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string"
+        }
+      }
+    },
+    "status": {
+      "type": "string",
+      "enum": ["active", "deleted", "archived"]
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "deletedAt": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "$defs": {
+    "point": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y"],
+      "properties": {
+        "x": { "type": "number" },
+        "y": { "type": "number" }
+      }
+    },
+    "discussionItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "parentId", "text", "author", "createdAt", "updatedAt", "status"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "parentId": { "type": ["string", "null"] },
+        "text": { "type": "string", "minLength": 1 },
+        "author": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["userId"],
+          "properties": {
+            "userId": { "type": "string", "minLength": 1 },
+            "name": { "type": "string" }
+          }
+        },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "status": { "type": "string", "enum": ["active", "deleted"] }
+      }
+    }
+  }
+}

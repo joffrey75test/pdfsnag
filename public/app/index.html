@@ -25,6 +25,11 @@
               <path d="M4 20h6l9-9-6-6-9 9v6zM11 6l7 7" />
             </svg>
           </button>
+          <button id="toolCloud" type="button" class="btn toolBtn" title="Nuage" aria-label="Nuage">
+            <svg viewBox="0 0 24 24" class="toolIcon" aria-hidden="true">
+              <path d="M7 18h10a4 4 0 0 0 .6-8 5.5 5.5 0 0 0-10.7-.8A3.8 3.8 0 0 0 7 18z" />
+            </svg>
+          </button>
           <button id="toolText" type="button" class="btn toolBtn" title="Texte" aria-label="Texte">
             <svg viewBox="0 0 24 24" class="toolIcon" aria-hidden="true">
               <path d="M5 6h14M12 6v12M8 18h8" />
@@ -43,8 +48,32 @@
           aria-label="Afficher ou masquer les vignettes"
           title="Afficher ou masquer les vignettes"
         >▤</button>
+        <button
+          id="toggleComments"
+          type="button"
+          class="btn"
+          aria-label="Afficher ou masquer les commentaires"
+          title="Afficher ou masquer les commentaires"
+          aria-pressed="true"
+        >💬</button>
       </div>
       <div class="toolbar__right">
+        <label class="styleCtl" title="Couleur du trait">
+          <span>C</span>
+          <input id="strokeColor" type="color" value="#ff0000" aria-label="Couleur du trait" />
+        </label>
+        <label class="styleCtl" title="Epaisseur du trait">
+          <span>E</span>
+          <input id="strokeWidth" type="number" min="1" max="24" step="1" value="4" aria-label="Epaisseur du trait" />
+        </label>
+        <label class="styleCtl" title="Style du trait">
+          <span>S</span>
+          <select id="strokeStyle" aria-label="Style du trait">
+            <option value="solid">Solide</option>
+            <option value="dashed">Tirets</option>
+            <option value="dotted">Points</option>
+          </select>
+        </label>
         <button id="zoomFit" type="button" class="btn" title="Ajuster à la fenêtre">↗</button>
         <button id="zoomOut" type="button" class="btn">-</button>
         <span id="zoomValue" class="zoomPill">100%</span>
@@ -61,6 +90,23 @@
       <div id="viewerContainer">
         <div id="viewer" class="pdfViewer"></div>
       </div>
+      <div id="commentResizer" aria-hidden="true"></div>
+      <aside id="commentSidebar" aria-label="Commentaires annotation">
+        <div class="commentHeader">
+          <h3 id="commentTitle">Commentaires</h3>
+          <button id="hideCommentSidebar" type="button" class="btn" title="Masquer les commentaires" aria-label="Masquer les commentaires">×</button>
+        </div>
+        <div id="commentMeta" class="commentMeta">Aucun objet sélectionné</div>
+        <textarea id="commentText" class="commentText" readonly placeholder="Sélectionne un objet sur le layer annotation"></textarea>
+        <div id="commentThread" class="commentThread"></div>
+        <div id="replyTarget" class="replyTarget" hidden></div>
+        <textarea id="newCommentText" class="commentText commentEditor" placeholder="Ajouter un commentaire..." disabled></textarea>
+        <div class="commentActions">
+          <button id="addCommentBtn" type="button" class="btn btn--text" disabled>Ajouter</button>
+          <button id="cancelReplyBtn" type="button" class="btn btn--text" hidden>Annuler réponse</button>
+        </div>
+        <button id="deleteSelectedAnnotation" type="button" class="btn btn--text commentDeleteBtn" disabled>Supprimer l'objet</button>
+      </aside>
     </div>
 
     <script type="module" src="/app/viewer.js"></script>

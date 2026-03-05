@@ -6,6 +6,7 @@ body {
 
 :root {
   --thumbs-width: 220px;
+  --comments-width: 300px;
   --toolbar-height: 56px;
 }
 
@@ -145,6 +146,49 @@ body {
   color: #6b7280;
 }
 
+.styleCtl {
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background: #fff;
+  color: #475569;
+  font-size: 12px;
+}
+
+.styleCtl span {
+  font-weight: 600;
+}
+
+.styleCtl input[type="color"] {
+  width: 22px;
+  height: 22px;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+}
+
+.styleCtl input[type="number"] {
+  width: 50px;
+  height: 24px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 12px;
+  padding: 0 6px;
+}
+
+.styleCtl select {
+  height: 24px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 12px;
+  background: #fff;
+}
+
 #appLayout {
   position: fixed;
   top: var(--toolbar-height);
@@ -219,12 +263,38 @@ body {
   color: #374151;
 }
 
+.page {
+  position: relative;
+}
+
+.cloudOverlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 19;
+}
+
+.cloudOverlaySvg {
+  width: 100%;
+  height: 100%;
+}
+
+.cloudShape {
+  fill: none;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.cloudShape.is-selected {
+  filter: drop-shadow(0 0 3px rgba(37, 99, 235, 0.9));
+}
+
 /* Le viewer PDF.js exige un container absolument positionné */
 #viewerContainer {
   position: absolute;
   top: 0;
   left: calc(var(--thumbs-width) + 8px);
-  right: 0;
+  right: var(--comments-width);
   bottom: 0;
   overflow: auto;
   -webkit-overflow-scrolling: touch;
@@ -233,6 +303,150 @@ body {
   cursor: grab;
   z-index: 1;
   overflow-x: hidden;
+}
+
+#commentSidebar {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: var(--comments-width);
+  box-sizing: border-box;
+  padding: 14px 12px;
+  overflow: auto;
+  border-left: 2px solid #cbd5e1;
+  background: #f8fafc;
+  z-index: 7;
+  box-shadow: -2px 0 10px rgba(0, 0, 0, 0.08);
+}
+
+.commentHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+#commentTitle {
+  margin: 0;
+  font-size: 16px;
+  color: #0f172a;
+}
+
+#hideCommentSidebar {
+  min-width: 28px;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  font-size: 18px;
+}
+
+#commentResizer {
+  position: absolute;
+  top: 0;
+  right: var(--comments-width);
+  width: 10px;
+  bottom: 0;
+  cursor: col-resize;
+  z-index: 6;
+  background: linear-gradient(
+    to left,
+    rgba(148, 163, 184, 0.35) 0,
+    rgba(148, 163, 184, 0.12) 3px,
+    rgba(148, 163, 184, 0) 10px
+  );
+}
+
+.commentMeta {
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: #64748b;
+  word-break: break-all;
+}
+
+.commentText {
+  width: 100%;
+  min-height: 140px;
+  resize: vertical;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #fff;
+  color: #0f172a;
+  font-size: 13px;
+  line-height: 1.4;
+  padding: 10px;
+  box-sizing: border-box;
+}
+
+.commentEditor {
+  min-height: 90px;
+  margin-top: 10px;
+}
+
+.commentThread {
+  margin-top: 10px;
+  max-height: 240px;
+  overflow: auto;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #fff;
+  padding: 8px;
+  font-size: 13px;
+  color: #334155;
+}
+
+.threadItem {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 8px;
+  margin-bottom: 8px;
+  background: #f8fafc;
+}
+
+.threadMeta {
+  font-size: 11px;
+  color: #64748b;
+}
+
+.threadBody {
+  margin-top: 4px;
+  white-space: pre-wrap;
+}
+
+.threadReplyBtn {
+  margin-top: 6px;
+  border: 0;
+  background: transparent;
+  color: #2563eb;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.replyTarget {
+  margin-top: 10px;
+  font-size: 12px;
+  color: #1e3a8a;
+  background: #dbeafe;
+  border: 1px solid #93c5fd;
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+
+.commentActions {
+  margin-top: 8px;
+  display: flex;
+  gap: 8px;
+}
+
+.commentDeleteBtn {
+  width: 100%;
+  margin-top: 10px;
+}
+
+.commentDeleteBtn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 #viewerContainer.is-panning {
@@ -251,6 +465,15 @@ body.thumbs-hidden #viewerContainer {
   left: 0;
 }
 
+body.comments-hidden #commentSidebar,
+body.comments-hidden #commentResizer {
+  display: none;
+}
+
+body.comments-hidden #viewerContainer {
+  right: 0;
+}
+
 body.is-resizing {
   user-select: none;
   cursor: col-resize;
@@ -259,6 +482,7 @@ body.is-resizing {
 @media (max-width: 768px) {
   :root {
     --toolbar-height: 94px;
+    --comments-width: 0px;
   }
 
   .toolbar {
@@ -302,5 +526,17 @@ body.is-resizing {
 
   .statusText {
     display: none;
+  }
+
+  #commentSidebar {
+    display: none;
+  }
+
+  #commentResizer {
+    display: none;
+  }
+
+  #viewerContainer {
+    right: 0;
   }
 }
