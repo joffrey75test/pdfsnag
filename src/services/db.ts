@@ -8,12 +8,17 @@ export type AuthClaims = {
 export type AppBindings = {
   DB: D1Database;
   FILES: R2Bucket;
+  R2?: R2Bucket;
   ASSETS: Fetcher;
   JWT_SECRET: string;
 };
 
 export type AppVariables = {
   auth: AuthClaims;
+  tenantId: string;
+  projectId: string;
+  scope: "read" | "write";
+  actorId: string;
 };
 
 export type AppEnv = {

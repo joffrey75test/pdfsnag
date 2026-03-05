@@ -1,5 +1,7 @@
 import { Hono } from "hono";
+import { adminRouter } from "./routes/admin";
 import { documentsRouter } from "./routes/documents";
+import { gedRouter } from "./routes/ged";
 import { projectsRouter } from "./routes/projects";
 import { syncRouter } from "./routes/sync";
 import { tasksRouter } from "./routes/tasks";
@@ -32,11 +34,22 @@ app.get("/health/db", async (c) => {
   }
 });
 
-app.use("/api/*", requireAuth);
+app.use("/api/projects/*", requireAuth);
+app.use("/api/projects", requireAuth);
+app.use("/api/tasks/*", requireAuth);
+app.use("/api/tasks", requireAuth);
+app.use("/api/documents/*", requireAuth);
+app.use("/api/documents", requireAuth);
+app.use("/api/sync/*", requireAuth);
+app.use("/api/sync", requireAuth);
+app.use("/api/admin/*", requireAuth);
+app.use("/api/admin", requireAuth);
 app.route("/api/projects", projectsRouter);
 app.route("/api/tasks", tasksRouter);
 app.route("/api/documents", documentsRouter);
 app.route("/api/sync", syncRouter);
+app.route("/api/admin", adminRouter);
+app.route("/", gedRouter);
 
 app.all("*", async (c) => {
   let res = await c.env.ASSETS.fetch(c.req.raw);

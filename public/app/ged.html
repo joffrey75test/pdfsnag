@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PDFSNAG GED</title>
+    <link rel="stylesheet" href="/app/ged.css" />
+  </head>
+  <body>
+    <header class="gedTopbar">
+      <div class="gedTopbar__left">
+        <a class="btn iconBtn" href="/app/" title="Retour Viewer" aria-label="Retour Viewer">←</a>
+        <h1>GED v1</h1>
+      </div>
+      <div class="gedTopbar__right">
+        <label>
+          Tenant
+          <input id="tenantId" type="text" placeholder="tenant_demo" />
+        </label>
+        <label>
+          Projet
+          <input id="projectId" type="text" placeholder="proj_demo" />
+        </label>
+        <label>
+          Token
+          <input id="projectToken" type="password" placeholder="token read/write" />
+        </label>
+        <button id="connectBtn" class="btn btn--primary iconBtn" type="button" title="Connecter" aria-label="Connecter">✓</button>
+      </div>
+    </header>
+
+    <main class="gedLayout">
+      <aside class="pane pane--folders">
+        <div class="paneHeader">
+          <h2>Dossiers</h2>
+          <div class="paneActions">
+            <button id="clearFolderFilterBtn" class="btn iconBtn" type="button" title="Tous les dossiers" aria-label="Tous les dossiers">◎</button>
+            <button id="newFolderBtn" class="btn iconBtn" type="button" title="Nouveau dossier" aria-label="Nouveau dossier">＋</button>
+            <button id="refreshFolders" class="btn iconBtn" type="button" title="Rafraichir dossiers" aria-label="Rafraichir dossiers">↻</button>
+          </div>
+        </div>
+        <div id="foldersList" class="list"></div>
+      </aside>
+
+      <section class="pane pane--documents">
+        <div class="paneHeader">
+          <h2>Documents</h2>
+          <div class="paneActions">
+            <span id="folderFilterLabel" class="pill">Racine</span>
+            <button id="newDocumentBtn" class="btn iconBtn" type="button" title="Nouveau document + upload" aria-label="Nouveau document + upload">⤴</button>
+            <button id="refreshDocuments" class="btn iconBtn" type="button" title="Rafraichir documents" aria-label="Rafraichir documents">↻</button>
+          </div>
+        </div>
+        <div id="dropZone" class="dropZone">
+          Glisse un fichier ici pour l'uploader dans ce dossier
+        </div>
+        <div id="uploadQueue" class="uploadQueue" hidden></div>
+        <div id="documentsList" class="list"></div>
+      </section>
+
+      <aside class="pane pane--details">
+        <div class="paneHeader">
+          <h2>Détails / Versions</h2>
+        </div>
+        <div id="detailsPanel" class="details">
+          Sélectionne un document pour voir les détails.
+        </div>
+      </aside>
+    </main>
+
+    <footer class="gedFooter">
+      <span id="gedStatus">Prêt.</span>
+    </footer>
+
+    <input id="documentUploadInput" type="file" hidden />
+
+    <script type="module" src="/app/ged.js"></script>
+  </body>
+</html>
