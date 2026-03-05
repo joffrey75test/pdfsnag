@@ -5,7 +5,10 @@
   "main": "src/worker.js",
   "scripts": {
     "dev": "npx wrangler dev --port 8787",
+    "dev:staging": "npx wrangler dev --env staging --port 8788",
+    "dev:staging:remote": "npx wrangler dev --env staging --remote --port 8788",
     "deploy": "npx wrangler deploy",
+    "deploy:staging": "npx wrangler deploy --env staging",
     "types": "npx wrangler types",
     "pdfjs:copy": "node scripts/copy-pdfjs.mjs"
   },

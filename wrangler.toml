@@ -5,3 +5,6 @@ compatibility_date = "2026-02-28"
 [assets]
 directory = "./public"
 binding = "ASSETS"
+
+[env.staging]
+name = "pdfsnag-staging"
