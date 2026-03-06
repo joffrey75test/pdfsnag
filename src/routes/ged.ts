@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { jwtVerify } from "jose";
 import type { AppEnv } from "../services/db";
 
 type Scope = "read" | "write";
@@ -19,6 +20,10 @@ function getR2Bucket(c: { env: AppEnv["Bindings"] }) {
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
+}
+
+function sanitizeFolderSegment(name: string) {
+  return name.trim().replaceAll("/", "_");
 }
 
 async function parseJsonBody(c: { req: { json: () => Promise<unknown> } }) {
@@ -61,6 +66,46 @@ async function audit(
 }
 
 export const gedRouter = new Hono<AppEnv>();
+
+gedRouter.get("/documents/download/:token", async (c) => {
+  const token = c.req.param("token");
+
+  let payload: { documentId?: unknown; projectId?: unknown; type?: unknown };
+  try {
+    const verified = await jwtVerify(token, new TextEncoder().encode(c.env.JWT_SECRET));
+    payload = verified.payload as { documentId?: unknown; projectId?: unknown; type?: unknown };
+  } catch {
+    return c.json({ ok: false, error: "Invalid or expired download token." }, 401);
+  }
+
+  if (payload.type !== "document_download" || typeof payload.documentId !== "string" || typeof payload.projectId !== "string") {
+    return c.json({ ok: false, error: "Invalid download payload." }, 401);
+  }
+
+  const row = await c.env.DB.prepare(
+    `SELECT d.title, v.r2_key, v.mime_type
+     FROM documents d
+     JOIN document_versions v ON v.id = d.current_version_id
+     WHERE d.id = ? AND d.project_id = ? AND d.status != 'DELETED'
+     LIMIT 1`
+  )
+    .bind(payload.documentId, payload.projectId)
+    .first<{ title: string; r2_key: string; mime_type: string }>();
+
+  if (!row) return c.json({ ok: false, error: "Document not found." }, 404);
+
+  const obj = await getR2Bucket(c).get(row.r2_key);
+  if (!obj) return c.json({ ok: false, error: "File missing in R2." }, 404);
+
+  const safeName = (row.title || "document").replaceAll('"', "");
+  return new Response(obj.body, {
+    headers: {
+      "content-type": row.mime_type || "application/octet-stream",
+      "content-disposition": `attachment; filename="${safeName}"`,
+      "cache-control": "private, max-age=300",
+    },
+  });
+});
 
 // Auth middleware (project token)
 gedRouter.use("/projects/:projectId/*", async (c, next) => {
@@ -134,16 +179,41 @@ gedRouter.post("/projects/:projectId/folders", async (c) => {
   }
 
   const id = uuid();
+  const safeName = name.trim();
   await c.env.DB.prepare(
     `INSERT INTO folders (id, tenant_id, project_id, parent_id, name, created_by_actor_id)
      VALUES (?, ?, ?, ?, ?, ?)`
   )
-    .bind(id, c.get("tenantId"), c.get("projectId"), parentId ?? null, name.trim(), c.get("actorId"))
+    .bind(id, c.get("tenantId"), c.get("projectId"), parentId ?? null, safeName, c.get("actorId"))
     .run();
 
-  await audit(c, "FOLDER_CREATE", "folder", id, { name: name.trim(), parentId: parentId ?? null });
+  const segment = sanitizeFolderSegment(safeName);
+  let path = `/${segment}/`;
+  if (isNonEmptyString(parentId)) {
+    const parent = await c.env.DB.prepare(
+      `SELECT path
+       FROM doc_folders
+       WHERE folder_id = ? AND project_id = ?
+       LIMIT 1`
+    )
+      .bind(parentId, c.get("projectId"))
+      .first<{ path: string }>();
 
-  return c.json({ id, name: name.trim(), parentId: parentId ?? null }, 201);
+    if (parent?.path) {
+      path = `${parent.path}${segment}/`;
+    }
+  }
+
+  await c.env.DB.prepare(
+    `INSERT OR IGNORE INTO doc_folders (folder_id, project_id, path, created_at)
+     VALUES (?, ?, ?, datetime('now'))`
+  )
+    .bind(id, c.get("projectId"), path)
+    .run();
+
+  await audit(c, "FOLDER_CREATE", "folder", id, { name: safeName, parentId: parentId ?? null, path });
+
+  return c.json({ id, name: safeName, parentId: parentId ?? null, path }, 201);
 });
 
 // DOCUMENTS

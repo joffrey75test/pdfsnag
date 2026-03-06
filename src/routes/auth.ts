@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import type { Context } from "hono";
 import type { AppEnv } from "../services/db";
 import { authCookie, hashPassword, issueJwt, requireAuth, verifyPassword } from "../services/auth";
 
@@ -16,7 +17,7 @@ async function parseJson(c: { req: { json: () => Promise<unknown> } }) {
 
 export const authRouter = new Hono<AppEnv>();
 
-authRouter.post("/register", async (c) => {
+async function handleSignup(c: Context<AppEnv>) {
   const body = await parseJson(c);
   const email = (body as { email?: unknown } | null)?.email;
   const password = (body as { password?: unknown } | null)?.password;
@@ -67,7 +68,10 @@ authRouter.post("/register", async (c) => {
     },
     201
   );
-});
+}
+
+authRouter.post("/signup", handleSignup);
+authRouter.post("/register", handleSignup);
 
 authRouter.post("/login", async (c) => {
   const body = await parseJson(c);

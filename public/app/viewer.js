@@ -410,7 +410,7 @@ async function openFromGedContextIfAny() {
   setStatus(ui, `Ouvert depuis GED: ${context.title || docId}`);
 }
 
-ui.fileInput.addEventListener("change", async (e) => {
+ui.fileInput?.addEventListener("change", async (e) => {
   const file = e.target.files?.[0];
   if (!file) return;
   try {

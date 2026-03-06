@@ -4,12 +4,15 @@ import { requireProjectRole } from "../services/authz";
 
 export const tasksRouter = new Hono<AppEnv>();
 
+tasksRouter.use("/projects/:projectId/*", requireProjectRole("guest"));
+tasksRouter.use("/projects/:projectId", requireProjectRole("guest"));
+
 tasksRouter.get("/", (c) => {
   const auth = c.get("auth");
   return c.json({ ok: true, resource: "tasks", user: auth.user_id, company: auth.company_id });
 });
 
-tasksRouter.get("/projects/:projectId", requireProjectRole("guest"), async (c) => {
+tasksRouter.get("/projects/:projectId", async (c) => {
   const auth = c.get("auth");
   const projectId = c.req.param("projectId");
   const listId = c.req.query("listId") || null;

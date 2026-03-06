@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PDFSNAG Users</title>
+    <link rel="stylesheet" href="/app/users.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="topbar__left">
+        <a class="btn" href="/app/" title="Retour Viewer" aria-label="Retour Viewer">←</a>
+        <a class="btn" href="/app/ged.html" title="Retour GED" aria-label="Retour GED">GED</a>
+        <h1>Gestion Utilisateurs</h1>
+      </div>
+      <div class="topbar__right">
+        <label>
+          JWT
+          <input id="jwtToken" type="password" placeholder="Bearer token admin" />
+        </label>
+        <label>
+          Company ID
+          <input id="companyId" type="text" placeholder="cmp_xxx" />
+        </label>
+        <button id="connectBtn" class="btn btn--primary" type="button">Connecter</button>
+      </div>
+    </header>
+
+    <main class="layout">
+      <section class="panel">
+        <div class="panel__header">
+          <h2>Membres</h2>
+          <button id="refreshMembersBtn" class="btn" type="button">Rafraichir</button>
+        </div>
+        <div id="membersList" class="list"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel__header">
+          <h2>Inviter un membre</h2>
+        </div>
+
+        <form id="inviteForm" class="form">
+          <label>
+            Email
+            <input id="inviteEmail" type="email" required placeholder="membre@exemple.com" />
+          </label>
+
+          <label>
+            Role company
+            <select id="inviteRole" required>
+              <option value="member">member</option>
+              <option value="admin">admin</option>
+              <option value="owner">owner</option>
+            </select>
+          </label>
+
+          <label>
+            Expiration (jours)
+            <input id="inviteExpiresDays" type="number" min="1" max="30" value="7" />
+          </label>
+
+          <button class="btn btn--primary" type="submit">Créer invitation</button>
+        </form>
+
+        <div id="inviteResult" class="result"></div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <span id="status">Prêt.</span>
+    </footer>
+
+    <script type="module" src="/app/users.js"></script>
+  </body>
+</html>

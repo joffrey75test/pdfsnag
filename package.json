@@ -12,7 +12,8 @@
     "types": "npx wrangler types",
     "pdfjs:copy": "node scripts/copy-pdfjs.mjs",
     "bootstrap:ged": "node scripts/bootstrap-ged-tokens.mjs",
-    "migrate:local": "./scripts/run-migrations-local.sh"
+    "migrate:local": "./scripts/run-migrations-local.sh",
+    "seed:admin": "node scripts/seed-admin-user.mjs"
   },
   "private": true,
   "keywords": [],
