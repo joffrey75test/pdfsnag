@@ -9,7 +9,8 @@ for f in \
   migrations/001_ged_v0_hardening.sql \
   migrations/002_identity_and_org.sql \
   migrations/003_auth_coexistence.sql \
-  migrations/004_domain_expansion.sql
+  migrations/004_domain_expansion.sql \
+  migrations/005_users_rbac_mvp.sql
 
 do
   echo "--- applying ${f}"

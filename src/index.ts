@@ -1,7 +1,10 @@
 import { Hono } from "hono";
 import { adminRouter } from "./routes/admin";
+import { authRouter } from "./routes/auth";
+import { companiesRouter } from "./routes/companies";
 import { documentsRouter } from "./routes/documents";
 import { gedRouter } from "./routes/ged";
+import { invitesRouter } from "./routes/invites";
 import { projectsRouter } from "./routes/projects";
 import { syncRouter } from "./routes/sync";
 import { tasksRouter } from "./routes/tasks";
@@ -44,11 +47,18 @@ app.use("/api/sync/*", requireAuth);
 app.use("/api/sync", requireAuth);
 app.use("/api/admin/*", requireAuth);
 app.use("/api/admin", requireAuth);
+app.use("/api/companies/*", requireAuth);
+app.use("/api/companies", requireAuth);
+app.use("/api/invites/*", requireAuth);
+app.use("/api/invites", requireAuth);
+app.route("/api/auth", authRouter);
 app.route("/api/projects", projectsRouter);
 app.route("/api/tasks", tasksRouter);
 app.route("/api/documents", documentsRouter);
 app.route("/api/sync", syncRouter);
 app.route("/api/admin", adminRouter);
+app.route("/api/companies", companiesRouter);
+app.route("/api/invites", invitesRouter);
 app.route("/", gedRouter);
 
 app.all("*", async (c) => {

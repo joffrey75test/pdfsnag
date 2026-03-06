@@ -76,8 +76,7 @@ function run() {
   const projectId = sqlEscape(opts.projectId);
   const projectName = sqlEscape(opts.projectName);
 
-  const sql = `BEGIN TRANSACTION;
-INSERT OR IGNORE INTO projects (id, tenant_id, name) VALUES ('${projectId}', '${tenant}', '${projectName}');
+  const sql = `INSERT OR IGNORE INTO projects (id, tenant_id, name) VALUES ('${projectId}', '${tenant}', '${projectName}');
 
 INSERT INTO actors (id, tenant_id, type, label)
 VALUES
@@ -88,7 +87,7 @@ INSERT INTO project_tokens (id, tenant_id, project_id, token_hash, scope, name, 
 VALUES
   ('${sqlEscape(tokenWriteId)}', '${tenant}', '${projectId}', '${writeHash}', 'write', 'bootstrap-write', '${sqlEscape(actorWriteId)}'),
   ('${sqlEscape(tokenReadId)}', '${tenant}', '${projectId}', '${readHash}', 'read', 'bootstrap-read', '${sqlEscape(actorReadId)}');
-COMMIT;`;
+`;
 
   console.log("\n=== GED Bootstrap (one-time secrets) ===");
   console.log(`tenant_id: ${opts.tenant}`);
@@ -117,7 +116,7 @@ COMMIT;`;
     }
 
     if (opts.applyRemote) {
-      execSync(`npx wrangler d1 execute ${opts.db} --file ${JSON.stringify(tmpSqlPath)}`, {
+      execSync(`npx wrangler d1 execute ${opts.db} --remote --file ${JSON.stringify(tmpSqlPath)}`, {
         stdio: "inherit",
       });
     }

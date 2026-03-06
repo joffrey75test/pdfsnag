@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import type { AppEnv } from "../services/db";
+import { requireProjectRole } from "../services/authz";
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -239,4 +240,27 @@ documentsRouter.post("/annotations/cloud", async (c) => {
   }
 
   return c.json({ ok: true, annotation: payload }, 201);
+});
+
+documentsRouter.get("/projects/:projectId", requireProjectRole("guest"), async (c) => {
+  const projectId = c.req.param("projectId");
+  const role = c.get("projectRole");
+  const rows = await c.env.DB.prepare(
+    `SELECT id, title, status, folder_id, current_version_id, created_at, updated_at
+     FROM documents
+     WHERE project_id = ? AND status != 'DELETED'
+     ORDER BY updated_at DESC
+     LIMIT 200`
+  )
+    .bind(projectId)
+    .all();
+
+  return c.json({ ok: true, projectId, role, documents: rows.results ?? [] });
+});
+
+documentsRouter.post("/projects/:projectId", requireProjectRole("collaborator"), async (c) => {
+  const projectId = c.req.param("projectId");
+  const role = c.get("projectRole");
+  const payload = await c.req.json().catch(() => null);
+  return c.json({ ok: true, projectId, role, accepted: payload ?? {} }, 201);
 });
