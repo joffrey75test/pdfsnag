@@ -19,6 +19,9 @@ export type AppVariables = {
   projectId: string;
   scope: "read" | "write";
   actorId: string;
+  companyRole: "owner" | "admin" | "member";
+  projectRole: "guest" | "collaborator" | "manager" | "admin";
+  listRole: "guest" | "collaborator" | "subcontractor";
 };
 
 export type AppEnv = {

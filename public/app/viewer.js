@@ -367,6 +367,49 @@ function hasDoc() {
   return !!state.pdfDoc;
 }
 
+async function openFromGedContextIfAny() {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get("openGedDoc") !== "1") return;
+
+  const docId = params.get("docId");
+  if (!docId) return;
+
+  let context = null;
+  try {
+    const raw = localStorage.getItem("pdfsnag_open_doc_context");
+    context = raw ? JSON.parse(raw) : null;
+  } catch {
+    context = null;
+  }
+
+  if (!context || context.docId !== docId) {
+    setStatus(ui, "Contexte GED introuvable");
+    return;
+  }
+  localStorage.removeItem("pdfsnag_open_doc_context");
+
+  const url = `/projects/${encodeURIComponent(context.projectId)}/documents/${encodeURIComponent(docId)}/content`;
+  const res = await fetch(url, {
+    headers: {
+      "x-tenant-id": context.tenantId,
+      Authorization: `Bearer ${context.projectToken}`,
+    },
+  });
+
+  if (!res.ok) {
+    setStatus(ui, `Erreur ouverture GED (${res.status})`);
+    return;
+  }
+
+  const blob = await res.blob();
+  const type = res.headers.get("content-type") || "application/pdf";
+  const file = new File([blob], `${context.title || "document"}.pdf`, { type });
+
+  await openFromFile(state, ui, file);
+  await buildThumbnails(state, ui);
+  setStatus(ui, `Ouvert depuis GED: ${context.title || docId}`);
+}
+
 ui.fileInput.addEventListener("change", async (e) => {
   const file = e.target.files?.[0];
   if (!file) return;
@@ -395,3 +438,8 @@ installMobilePinch(
   (msg) => setStatus(ui, msg),
   () => setZoomLabel(ui, state.pdfViewer.currentScale || 1)
 );
+
+openFromGedContextIfAny().catch((err) => {
+  console.error(err);
+  setStatus(ui, "Erreur ouverture GED");
+});

@@ -392,29 +392,26 @@ ui.detailsPanel.addEventListener("click", (event) => {
   const btn = target instanceof HTMLElement ? target.closest("#openDocBtn") : null;
   if (!btn) return;
 
-  const url = btn.getAttribute("data-doc-url");
-  if (!url) return;
+  const doc = getSelectedDocument();
+  if (!doc?.id) return;
 
-  fetch(url, {
-    headers: {
-      "x-tenant-id": session.tenantId,
-      Authorization: `Bearer ${session.projectToken}`,
-    },
-  })
-    .then((res) => {
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
-      }
-      return res.blob();
-    })
-    .then((blob) => {
-      const objectUrl = URL.createObjectURL(blob);
-      window.open(objectUrl, "_blank", "noopener,noreferrer");
-      setTimeout(() => URL.revokeObjectURL(objectUrl), 30000);
-    })
-    .catch((error) => {
-      setStatus(`Erreur ouverture document: ${error instanceof Error ? error.message : "unknown"}`);
-    });
+  try {
+    localStorage.setItem(
+      "pdfsnag_open_doc_context",
+      JSON.stringify({
+        tenantId: session.tenantId,
+        projectId: session.projectId,
+        projectToken: session.projectToken,
+        docId: doc.id,
+        title: doc.title || "document",
+        ts: Date.now(),
+      })
+    );
+    const targetUrl = `/app/?openGedDoc=1&docId=${encodeURIComponent(doc.id)}`;
+    window.open(targetUrl, "_blank", "noopener,noreferrer");
+  } catch (error) {
+    setStatus(`Erreur ouverture viewer: ${error instanceof Error ? error.message : "unknown"}`);
+  }
 });
 
 syncFormFromSession();
