@@ -5,28 +5,50 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>PDFSNAG GED</title>
     <link rel="stylesheet" href="/app/ged.css" />
+    <link rel="stylesheet" href="/app/shell.css" />
   </head>
-  <body>
+  <body class="appShellBody">
+    <aside class="appSidebar" aria-label="Navigation">
+      <div class="appSidebar__brand">
+        <div class="appSidebar__brandText">
+          <strong>PDFSNAG</strong>
+        </div>
+      </div>
+      <nav class="appSidebar__nav">
+        <a class="appSidebar__link" href="/app/login.html">Projet</a>
+        <a class="appSidebar__link is-active" href="/app/ged.html">GED</a>
+        <a class="appSidebar__link" href="/app/lists.html">Listes</a>
+      </nav>
+      <div class="appSidebar__footer">
+        <a href="/app/">Ouvrir le viewer</a>
+      </div>
+    </aside>
+    <div id="appSidebarResizer" class="appSidebarResizer" aria-hidden="true"></div>
+
     <header class="gedTopbar">
       <div class="gedTopbar__left">
-        <a class="btn iconBtn" href="/app/" title="Retour Viewer" aria-label="Retour Viewer">←</a>
-        <a class="btn" href="/app/users.html" title="Gestion utilisateurs" aria-label="Gestion utilisateurs">Users</a>
         <h1>GED v1</h1>
       </div>
       <div class="gedTopbar__right">
-        <label>
-          Tenant
-          <input id="tenantId" type="text" placeholder="tenant_demo" />
-        </label>
-        <label>
-          Projet
-          <input id="projectId" type="text" placeholder="proj_demo" />
-        </label>
-        <label>
-          Token
-          <input id="projectToken" type="password" placeholder="token read/write" />
-        </label>
-        <button id="connectBtn" class="btn btn--primary iconBtn" type="button" title="Connecter" aria-label="Connecter">✓</button>
+        <div class="gedInfo">
+          <div class="gedInfo__item">
+            <span>Mode</span>
+            <strong id="infoMode">-</strong>
+          </div>
+          <div class="gedInfo__item">
+            <span>Company</span>
+            <strong id="infoTenant">-</strong>
+          </div>
+          <div class="gedInfo__item">
+            <span>Projet</span>
+            <strong id="infoProject">-</strong>
+          </div>
+          <div class="gedInfo__item">
+            <span>Auth</span>
+            <strong id="infoAuth">-</strong>
+          </div>
+        </div>
+        <button id="refreshSessionBtn" class="btn iconBtn" type="button" title="Rafraichir session" aria-label="Rafraichir session">↻</button>
       </div>
     </header>
 
@@ -75,6 +97,7 @@
 
     <input id="documentUploadInput" type="file" hidden />
 
+    <script type="module" src="/app/shell.js"></script>
     <script type="module" src="/app/ged.js"></script>
   </body>
 </html>

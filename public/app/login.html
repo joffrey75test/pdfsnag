@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PDFSNAG Login</title>
+    <link rel="stylesheet" href="/app/users.css" />
+    <link rel="stylesheet" href="/app/shell.css" />
+  </head>
+  <body class="appShellBody">
+    <aside class="appSidebar" aria-label="Navigation">
+      <div class="appSidebar__brand">
+        <div class="appSidebar__brandText">
+          <strong>PDFSNAG</strong>
+        </div>
+      </div>
+      <nav class="appSidebar__nav">
+        <a class="appSidebar__link is-active" href="/app/login.html">Projet</a>
+        <a class="appSidebar__link" href="/app/ged.html">GED</a>
+        <a class="appSidebar__link" href="/app/lists.html">Listes</a>
+      </nav>
+      <div class="appSidebar__footer">
+        <a href="/app/">Ouvrir le viewer</a>
+      </div>
+    </aside>
+    <div id="appSidebarResizer" class="appSidebarResizer" aria-hidden="true"></div>
+
+    <header class="topbar">
+      <div class="topbar__left">
+        <h1>Projet / Connexion</h1>
+      </div>
+    </header>
+
+    <main class="layout">
+      <section class="panel">
+        <div class="panel__header">
+          <h2>Login API</h2>
+        </div>
+        <form id="loginForm" class="form">
+          <label>
+            Email
+            <input id="email" type="email" required autocomplete="username" placeholder="admin1@example.com" />
+          </label>
+
+          <label>
+            Mot de passe
+            <input id="password" type="password" required autocomplete="current-password" placeholder="********" />
+          </label>
+
+          <button class="btn btn--primary" type="submit">Se connecter</button>
+        </form>
+      </section>
+
+      <section class="panel">
+        <div class="panel__header">
+          <h2>Session locale</h2>
+        </div>
+        <div class="form">
+          <label>
+            Company ID
+            <input id="companyId" type="text" readonly />
+          </label>
+          <label>
+            JWT
+            <input id="jwtToken" type="text" readonly />
+          </label>
+          <div id="result" class="result">Aucune session utilisateur.</div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel__header">
+          <h2>Projets accessibles</h2>
+        </div>
+        <div class="form">
+          <label>
+            Projet
+            <select id="projectSelect">
+              <option value="">(aucun projet)</option>
+            </select>
+          </label>
+          <button id="useProjectBtn" class="btn btn--primary" type="button">Utiliser pour GED</button>
+          <div id="projectsInfo" class="result">Connecte-toi pour charger tes projets.</div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <span id="status">Prêt.</span>
+    </footer>
+
+    <script type="module" src="/app/shell.js"></script>
+    <script type="module" src="/app/login.js"></script>
+  </body>
+</html>

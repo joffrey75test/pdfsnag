@@ -8,6 +8,7 @@ body {
   --thumbs-width: 220px;
   --comments-width: 300px;
   --toolbar-height: 56px;
+  --app-nav-width: 220px;
 }
 
 body {
@@ -29,6 +30,14 @@ body {
   border-bottom: 1px solid #e5e7eb;
   background: #ffffff;
   z-index: 20;
+}
+
+body.appShellBody .toolbar {
+  left: var(--app-nav-width);
+}
+
+body.appShellBody--nav-collapsed .toolbar {
+  left: 0;
 }
 
 .toolbar__left,
@@ -196,6 +205,23 @@ body {
   right: 0;
   bottom: 0;
   overflow: hidden;
+}
+
+body.appShellBody #appLayout {
+  left: var(--app-nav-width);
+}
+
+body.appShellBody--nav-collapsed #appLayout {
+  left: 0;
+}
+
+body.appShellBody--nav-collapsed #thumbsSidebar,
+body.appShellBody--nav-collapsed #thumbsResizer {
+  display: none;
+}
+
+body.appShellBody--nav-collapsed #viewerContainer {
+  left: 0;
 }
 
 #thumbsSidebar {
@@ -538,5 +564,16 @@ body.is-resizing {
 
   #viewerContainer {
     right: 0;
+  }
+}
+
+@media (max-width: 980px) {
+  body.appShellBody .toolbar,
+  body.appShellBody #appLayout {
+    left: 0;
+  }
+
+  body.appShellBody .appSidebar {
+    display: none;
   }
 }

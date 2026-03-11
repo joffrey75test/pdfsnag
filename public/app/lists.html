@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PDFSNAG Listes</title>
+    <link rel="stylesheet" href="/app/users.css" />
+    <link rel="stylesheet" href="/app/shell.css" />
+  </head>
+  <body class="appShellBody">
+    <aside class="appSidebar" aria-label="Navigation">
+      <div class="appSidebar__brand">
+        <div class="appSidebar__brandText">
+          <strong>PDFSNAG</strong>
+        </div>
+      </div>
+      <nav class="appSidebar__nav">
+        <a class="appSidebar__link" href="/app/login.html">Projet</a>
+        <a class="appSidebar__link" href="/app/ged.html">GED</a>
+        <a class="appSidebar__link is-active" href="/app/lists.html">Listes</a>
+      </nav>
+      <div class="appSidebar__footer">
+        <a href="/app/">Ouvrir le viewer</a>
+      </div>
+    </aside>
+    <div id="appSidebarResizer" class="appSidebarResizer" aria-hidden="true"></div>
+
+    <header class="topbar">
+      <div class="topbar__left">
+        <h1>Listes projet</h1>
+      </div>
+      <div class="topbar__right">
+        <button id="refreshBtn" class="btn" type="button">Rafraichir</button>
+      </div>
+    </header>
+
+    <main class="layout">
+      <section class="panel">
+        <div class="panel__header">
+          <h2>Contexte</h2>
+        </div>
+        <div class="form">
+          <label>
+            Company ID
+            <input id="companyId" type="text" readonly />
+          </label>
+          <label>
+            Project ID
+            <input id="projectId" type="text" readonly />
+          </label>
+          <label>
+            JWT
+            <input id="jwtState" type="text" readonly />
+          </label>
+          <div id="contextInfo" class="result">Chargement...</div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel__header">
+          <h2>Listes accessibles</h2>
+        </div>
+        <div id="listsView" class="list"></div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <span id="status">Prêt.</span>
+    </footer>
+
+    <script type="module" src="/app/shell.js"></script>
+    <script type="module" src="/app/lists.js"></script>
+  </body>
+</html>

@@ -1,18 +1,18 @@
 import {
-  createDocument,
   createFolder,
   listDocuments,
   listFolders,
   loadSession,
-  saveSession,
   uploadVersionContent,
 } from "/app/lib/ged-api.js";
+import { loadSession as loadUsersSession } from "/app/lib/users-api.js";
 
 const ui = {
-  tenantId: document.getElementById("tenantId"),
-  projectId: document.getElementById("projectId"),
-  projectToken: document.getElementById("projectToken"),
-  connectBtn: document.getElementById("connectBtn"),
+  infoMode: document.getElementById("infoMode"),
+  infoTenant: document.getElementById("infoTenant"),
+  infoProject: document.getElementById("infoProject"),
+  infoAuth: document.getElementById("infoAuth"),
+  refreshSessionBtn: document.getElementById("refreshSessionBtn"),
   refreshFolders: document.getElementById("refreshFolders"),
   refreshDocuments: document.getElementById("refreshDocuments"),
   clearFolderFilterBtn: document.getElementById("clearFolderFilterBtn"),
@@ -29,11 +29,79 @@ const ui = {
 };
 
 let session = loadSession();
+let usersSession = loadUsersSession();
 let foldersState = [];
 let foldersById = new Map();
 let documentsState = [];
 let selectedFolderId = null;
 let selectedDocumentId = null;
+
+function getAuthMode() {
+  if (session.companyId && session.projectId && session.projectToken) return "token";
+  if (usersSession.jwtToken) return "user";
+  return "none";
+}
+
+function shortText(value, fallback = "-") {
+  const v = String(value || "").trim();
+  if (!v) return fallback;
+  return v;
+}
+
+function updateHeaderInfo() {
+  usersSession = loadUsersSession();
+  const mode = getAuthMode();
+
+  ui.infoMode.textContent = mode === "token" ? "Token GED" : mode === "user" ? "JWT user" : "Aucun";
+  const visibleCompanyId = mode === "token" ? session.companyId : mode === "user" ? usersSession.companyId : "";
+  ui.infoTenant.textContent = shortText(visibleCompanyId);
+  ui.infoProject.textContent = shortText(session.projectId);
+
+  if (mode === "token") {
+    ui.infoAuth.textContent = "Bearer token";
+  } else if (mode === "user") {
+    ui.infoAuth.textContent = "JWT actif";
+  } else {
+    ui.infoAuth.textContent = "Non connecté";
+  }
+}
+
+function updateCapabilityUi() {
+  const isTokenMode = getAuthMode() === "token";
+  const isUserMode = getAuthMode() === "user";
+  const hasProjectId = Boolean(session.projectId);
+  ui.newFolderBtn.disabled = !isTokenMode;
+  const canUpload = isTokenMode || (isUserMode && hasProjectId);
+  ui.newDocumentBtn.disabled = !canUpload;
+  ui.dropZone.style.opacity = canUpload ? "1" : "0.55";
+  ui.dropZone.style.pointerEvents = canUpload ? "auto" : "none";
+  ui.dropZone.textContent = canUpload
+    ? "Glisse un fichier ici pour l'uploader dans ce dossier"
+    : isUserMode
+      ? "JWT actif. Sélectionne un projet pour uploader"
+      : "Connecte-toi (JWT) et sélectionne un projet pour uploader";
+}
+
+async function requestUserApi(path, options = {}) {
+  usersSession = loadUsersSession();
+  if (!usersSession.jwtToken) throw new Error("JWT user manquant. Connecte-toi sur /app/login.html.");
+
+  const res = await fetch(path, {
+    ...options,
+    headers: {
+      Authorization: `Bearer ${usersSession.jwtToken}`,
+      ...(options.headers || {}),
+    },
+  });
+
+  const isJson = (res.headers.get("content-type") || "").includes("application/json");
+  const payload = isJson ? await res.json() : await res.text();
+  if (!res.ok) {
+    const msg = payload && typeof payload === "object" && payload.error ? payload.error : `HTTP ${res.status}`;
+    throw new Error(msg);
+  }
+  return payload;
+}
 
 function setStatus(message) {
   ui.status.textContent = message;
@@ -88,6 +156,7 @@ function createUploadItem(name) {
 }
 
 async function fetchFolderTree(parentId = null, depth = 0, maxDepth = 5) {
+  if (getAuthMode() !== "token") return [];
   if (depth > maxDepth) return [];
 
   const rows = await listFolders(session, parentId);
@@ -180,7 +249,6 @@ function renderDetails() {
     return;
   }
 
-  const url = `/projects/${encodeURIComponent(session.projectId)}/documents/${encodeURIComponent(doc.id)}/content`;
   ui.detailsPanel.innerHTML = `
     <div class="detailsBlock">
       <strong>${escapeHtml(doc.title)}</strong>
@@ -190,13 +258,22 @@ function renderDetails() {
       <div class="detailsMeta">Créé: ${escapeHtml(doc.created_at || "-")}</div>
       <div class="detailsMeta">Mis à jour: ${escapeHtml(doc.updated_at || "-")}</div>
       <div class="detailsActions">
-        <button class="btn iconBtn" type="button" id="openDocBtn" data-doc-url="${escapeHtml(url)}" title="Ouvrir / Télécharger" aria-label="Ouvrir / Télécharger">↗</button>
+        <button class="btn iconBtn" type="button" id="openDocBtn" title="Ouvrir / Télécharger" aria-label="Ouvrir / Télécharger">↗</button>
       </div>
     </div>
   `;
 }
 
 async function refreshFolders() {
+  if (getAuthMode() !== "token") {
+    foldersState = [];
+    foldersById = new Map();
+    selectedFolderId = null;
+    renderFolders([]);
+    syncFolderFilterLabel();
+    return;
+  }
+
   foldersState = await fetchFolderTree(null);
   foldersById = new Map(flattenTree(foldersState).map((item) => [item.id, item]));
 
@@ -209,7 +286,15 @@ async function refreshFolders() {
 }
 
 async function refreshDocuments() {
-  const docs = await listDocuments(session, selectedFolderId);
+  let docs;
+  if (getAuthMode() === "token") {
+    docs = await listDocuments(session, selectedFolderId);
+  } else if (getAuthMode() === "user" && session.projectId) {
+    const payload = await requestUserApi(`/api/documents/projects/${encodeURIComponent(session.projectId)}`);
+    docs = payload?.documents || [];
+  } else {
+    docs = [];
+  }
   documentsState = Array.isArray(docs) ? docs : [];
 
   if (selectedDocumentId && !documentsState.find((d) => d.id === selectedDocumentId)) {
@@ -222,47 +307,120 @@ async function refreshDocuments() {
 
 async function refreshAll() {
   setStatus("Chargement GED...");
+  updateHeaderInfo();
+  updateCapabilityUi();
   try {
     await Promise.all([refreshFolders(), refreshDocuments()]);
-    setStatus("GED connectée.");
+    if (getAuthMode() === "user" && session.projectId) {
+      setStatus("GED connectée (mode lecture utilisateur).");
+    } else if (getAuthMode() === "user") {
+      setStatus("JWT actif. Définis un projet pour charger les documents.");
+    } else if (getAuthMode() === "token") {
+      setStatus("GED connectée (mode token).");
+    } else {
+      setStatus("Renseigne projet + token, ou connecte-toi via /app/login.html");
+    }
   } catch (error) {
     setStatus(`Erreur: ${error instanceof Error ? error.message : "unknown"}`);
   }
 }
 
-function syncFormFromSession() {
-  ui.tenantId.value = session.tenantId;
-  ui.projectId.value = session.projectId;
-  ui.projectToken.value = session.projectToken;
-}
-
 async function uploadDocumentFile(file) {
   const item = createUploadItem(file.name);
-  item.setMeta("Création des métadonnées...");
+  const mode = getAuthMode();
 
-  const created = await createDocument(session, {
-    title: file.name,
-    folderId: selectedFolderId,
-    mimeType: file.type || "application/octet-stream",
-  });
+  if (mode === "token") {
+    item.setMeta("Création des métadonnées...");
 
-  if (!created?.upload?.url) {
-    throw new Error("Réponse API invalide (upload.url manquant)");
+    const created = await createDocument(session, {
+      title: file.name,
+      folderId: selectedFolderId,
+      mimeType: file.type || "application/octet-stream",
+    });
+
+    if (!created?.upload?.url) {
+      throw new Error("Réponse API invalide (upload.url manquant)");
+    }
+
+    item.setProgress(10);
+    item.setMeta("Upload en cours...");
+
+    await uploadVersionContent(session, created.upload.url, file, (pct) => {
+      const mapped = Math.max(10, pct);
+      item.setProgress(mapped);
+    });
+
+    item.setProgress(100);
+    item.setMeta("Upload terminé.");
+    item.remove(1200);
+    selectedDocumentId = created.documentId || null;
+    return;
   }
 
-  item.setProgress(10);
-  item.setMeta("Upload en cours...");
+  if (mode === "user") {
+    usersSession = loadUsersSession();
+    if (!usersSession.jwtToken) throw new Error("JWT user manquant.");
+    if (!session.projectId) throw new Error("projectId manquant.");
 
-  await uploadVersionContent(session, created.upload.url, file, (pct) => {
-    const mapped = Math.max(10, pct);
-    item.setProgress(mapped);
-  });
+    item.setMeta("Initialisation upload...");
+    const initPayload = await requestUserApi(`/api/documents/projects/${encodeURIComponent(session.projectId)}/files/init`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        filename: file.name,
+        contentType: file.type || "application/octet-stream",
+        byteSize: file.size || 0,
+      }),
+    });
 
-  item.setProgress(100);
-  item.setMeta("Upload terminé.");
-  item.remove(1200);
+    const fileId = initPayload?.file?.fileId;
+    const uploadUrl = initPayload?.upload?.url;
+    if (!fileId || !uploadUrl) throw new Error("Initialisation upload invalide.");
 
-  selectedDocumentId = created.documentId || null;
+    item.setProgress(10);
+    item.setMeta("Upload binaire...");
+
+    await new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("PUT", uploadUrl);
+      xhr.setRequestHeader("Authorization", `Bearer ${usersSession.jwtToken}`);
+      xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
+      xhr.upload.onprogress = (event) => {
+        if (!event.lengthComputable) return;
+        const pct = Math.round((event.loaded / event.total) * 100);
+        item.setProgress(Math.max(10, pct));
+      };
+      xhr.onload = () => {
+        if (xhr.status < 200 || xhr.status >= 300) {
+          reject(new Error(`Upload failed (HTTP ${xhr.status})`));
+          return;
+        }
+        resolve(null);
+      };
+      xhr.onerror = () => reject(new Error("Erreur réseau pendant l'upload"));
+      xhr.send(file);
+    });
+
+    item.setProgress(90);
+    item.setMeta("Création document...");
+    const created = await requestUserApi(`/api/documents/projects/${encodeURIComponent(session.projectId)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: file.name,
+        fileId,
+        mimeType: file.type || "application/octet-stream",
+      }),
+    });
+
+    item.setProgress(100);
+    item.setMeta("Upload terminé.");
+    item.remove(1200);
+    selectedDocumentId = created?.document?.id || null;
+    return;
+  }
+
+  throw new Error("Connecte-toi pour uploader.");
 }
 
 async function onUploadFiles(fileList) {
@@ -282,13 +440,9 @@ async function onUploadFiles(fileList) {
   setStatus("Uploads terminés.");
 }
 
-ui.connectBtn.addEventListener("click", async () => {
-  session = {
-    tenantId: ui.tenantId.value.trim(),
-    projectId: ui.projectId.value.trim(),
-    projectToken: ui.projectToken.value.trim(),
-  };
-  saveSession(session);
+ui.refreshSessionBtn?.addEventListener("click", async () => {
+  session = loadSession();
+  usersSession = loadUsersSession();
   await refreshAll();
 });
 
@@ -320,6 +474,10 @@ ui.clearFolderFilterBtn.addEventListener("click", async () => {
 });
 
 ui.newFolderBtn.addEventListener("click", async () => {
+  if (getAuthMode() !== "token") {
+    setStatus("Création dossier disponible uniquement en mode token GED.");
+    return;
+  }
   const name = window.prompt("Nom du nouveau dossier");
   if (!name || !name.trim()) return;
 
@@ -333,11 +491,16 @@ ui.newFolderBtn.addEventListener("click", async () => {
 });
 
 ui.newDocumentBtn.addEventListener("click", () => {
+  if (getAuthMode() === "none") {
+    setStatus("Upload indisponible sans connexion.");
+    return;
+  }
   ui.uploadInput.value = "";
   ui.uploadInput.click();
 });
 
 ui.uploadInput.addEventListener("change", async () => {
+  if (getAuthMode() === "none") return;
   await onUploadFiles(ui.uploadInput.files);
 });
 
@@ -352,12 +515,14 @@ ui.dropZone.addEventListener("dragleave", () => {
 
 ui.dropZone.addEventListener("drop", async (event) => {
   event.preventDefault();
+  if (getAuthMode() === "none") return;
   ui.dropZone.classList.remove("is-dragover");
   const files = event.dataTransfer?.files;
   await onUploadFiles(files);
 });
 
 ui.foldersList.addEventListener("click", async (event) => {
+  if (getAuthMode() !== "token") return;
   const target = event.target;
   const btn = target instanceof HTMLElement ? target.closest("[data-folder-id]") : null;
   if (!btn) return;
@@ -399,23 +564,26 @@ ui.detailsPanel.addEventListener("click", (event) => {
     localStorage.setItem(
       "pdfsnag_open_doc_context",
       JSON.stringify({
-        tenantId: session.tenantId,
+        authMode: getAuthMode(),
+        companyId: session.companyId || "",
         projectId: session.projectId,
         projectToken: session.projectToken,
+        jwtToken: usersSession.jwtToken || "",
         docId: doc.id,
         title: doc.title || "document",
         ts: Date.now(),
       })
     );
     const targetUrl = `/app/?openGedDoc=1&docId=${encodeURIComponent(doc.id)}`;
-    window.open(targetUrl, "_blank", "noopener,noreferrer");
+    window.location.href = targetUrl;
   } catch (error) {
     setStatus(`Erreur ouverture viewer: ${error instanceof Error ? error.message : "unknown"}`);
   }
 });
 
-syncFormFromSession();
 syncFolderFilterLabel();
-if (session.tenantId && session.projectId && session.projectToken) {
+updateHeaderInfo();
+updateCapabilityUi();
+if ((session.companyId && session.projectId && session.projectToken) || usersSession.jwtToken) {
   refreshAll();
 }

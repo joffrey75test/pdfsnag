@@ -5,9 +5,28 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>PDF Viewer</title>
     <link rel="stylesheet" href="/pdfjs/web/pdf_viewer.css" />
+    <link rel="stylesheet" href="/app/shell.css" />
     <link rel="stylesheet" href="/app/styles.css" />
   </head>
-  <body>
+  <body class="appShellBody">
+    <aside class="appSidebar" aria-label="Navigation">
+      <div class="appSidebar__brand">
+        <div class="appSidebar__brandText">
+          <strong>PDFSNAG</strong>
+        </div>
+      </div>
+      <nav class="appSidebar__nav">
+        <a class="appSidebar__link" href="/app/login.html">Projet</a>
+        <a class="appSidebar__link" href="/app/ged.html">GED</a>
+        <a class="appSidebar__link" href="/app/lists.html">Listes</a>
+        <a class="appSidebar__link is-active" href="/app/">Viewer</a>
+      </nav>
+      <div class="appSidebar__footer">
+        <a href="/app/users.html">Gestion utilisateurs</a>
+      </div>
+    </aside>
+    <div id="appSidebarResizer" class="appSidebarResizer" aria-hidden="true"></div>
+
     <div class="toolbar">
       <div class="toolbar__left">
         <div class="toolGroup" role="group" aria-label="Outils annotation">
@@ -107,6 +126,7 @@
       </aside>
     </div>
 
+    <script type="module" src="/app/shell.js"></script>
     <script type="module" src="/app/viewer.js"></script>
   </body>
 </html>

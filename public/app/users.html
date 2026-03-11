@@ -5,12 +5,28 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>PDFSNAG Users</title>
     <link rel="stylesheet" href="/app/users.css" />
+    <link rel="stylesheet" href="/app/shell.css" />
   </head>
-  <body>
+  <body class="appShellBody">
+    <aside class="appSidebar" aria-label="Navigation">
+      <div class="appSidebar__brand">
+        <div class="appSidebar__brandText">
+          <strong>PDFSNAG</strong>
+        </div>
+      </div>
+      <nav class="appSidebar__nav">
+        <a class="appSidebar__link" href="/app/login.html">Projet</a>
+        <a class="appSidebar__link" href="/app/ged.html">GED</a>
+        <a class="appSidebar__link" href="/app/lists.html">Listes</a>
+      </nav>
+      <div class="appSidebar__footer">
+        <a href="/app/">Ouvrir le viewer</a>
+      </div>
+    </aside>
+    <div id="appSidebarResizer" class="appSidebarResizer" aria-hidden="true"></div>
+
     <header class="topbar">
       <div class="topbar__left">
-        <a class="btn" href="/app/" title="Retour Viewer" aria-label="Retour Viewer">←</a>
-        <a class="btn" href="/app/ged.html" title="Retour GED" aria-label="Retour GED">GED</a>
         <h1>Gestion Utilisateurs</h1>
       </div>
       <div class="topbar__right">
@@ -71,6 +87,7 @@
       <span id="status">Prêt.</span>
     </footer>
 
+    <script type="module" src="/app/shell.js"></script>
     <script type="module" src="/app/users.js"></script>
   </body>
 </html>
