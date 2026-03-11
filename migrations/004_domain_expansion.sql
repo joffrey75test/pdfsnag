@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS list (
   visibility TEXT NOT NULL CHECK (visibility IN ('public','private','shared')),
   created_by_user_id TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  FOREIGN KEY (project_id) REFERENCES projects(id),
+  FOREIGN KEY (project_id) REFERENCES projects(project_id),
   FOREIGN KEY (created_by_user_id) REFERENCES user(user_id)
 );
 
@@ -35,7 +35,7 @@ CREATE TABLE IF NOT EXISTS list_occurrence (
   UNIQUE (list_id, occurrence_index)
 );
 
-CREATE TABLE IF NOT EXISTS task (
+CREATE TABLE IF NOT EXISTS tasks (
   task_id TEXT PRIMARY KEY,
   project_id TEXT NOT NULL,
   list_id TEXT,
@@ -51,21 +51,21 @@ CREATE TABLE IF NOT EXISTS task (
   page_index INTEGER,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-  FOREIGN KEY (project_id) REFERENCES projects(id),
+  FOREIGN KEY (project_id) REFERENCES projects(project_id),
   FOREIGN KEY (list_id) REFERENCES list(list_id),
   FOREIGN KEY (occurrence_id) REFERENCES list_occurrence(occurrence_id),
   FOREIGN KEY (assigned_to_user_id) REFERENCES user(user_id),
   FOREIGN KEY (created_by_user_id) REFERENCES user(user_id)
 );
 
-CREATE TABLE IF NOT EXISTS task_event (
+CREATE TABLE IF NOT EXISTS task_events (
   task_event_id TEXT PRIMARY KEY,
   task_id TEXT NOT NULL,
   actor_user_id TEXT,
   type TEXT NOT NULL,
   payload_json TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  FOREIGN KEY (task_id) REFERENCES task(task_id),
+  FOREIGN KEY (task_id) REFERENCES tasks(task_id),
   FOREIGN KEY (actor_user_id) REFERENCES user(user_id)
 );
 
@@ -74,15 +74,15 @@ CREATE TABLE IF NOT EXISTS tag (
   project_id TEXT NOT NULL,
   name TEXT NOT NULL,
   color TEXT,
-  FOREIGN KEY (project_id) REFERENCES projects(id),
+  FOREIGN KEY (project_id) REFERENCES projects(project_id),
   UNIQUE (project_id, name)
 );
 
-CREATE TABLE IF NOT EXISTS task_tag (
+CREATE TABLE IF NOT EXISTS task_tags (
   task_id TEXT NOT NULL,
   tag_id TEXT NOT NULL,
   PRIMARY KEY (task_id, tag_id),
-  FOREIGN KEY (task_id) REFERENCES task(task_id),
+  FOREIGN KEY (task_id) REFERENCES tasks(task_id),
   FOREIGN KEY (tag_id) REFERENCES tag(tag_id)
 );
 
@@ -96,7 +96,7 @@ CREATE TABLE IF NOT EXISTS file_object (
   sha256 TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   created_by_user_id TEXT,
-  FOREIGN KEY (project_id) REFERENCES projects(id),
+  FOREIGN KEY (project_id) REFERENCES projects(project_id),
   FOREIGN KEY (created_by_user_id) REFERENCES user(user_id),
   UNIQUE (r2_key)
 );
@@ -120,8 +120,8 @@ CREATE TABLE IF NOT EXISTS processed_event (
   UNIQUE (device_id, event_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_task_project ON task(project_id);
-CREATE INDEX IF NOT EXISTS idx_task_list ON task(list_id);
-CREATE INDEX IF NOT EXISTS idx_task_event_task_time ON task_event(task_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_list ON tasks(list_id);
+CREATE INDEX IF NOT EXISTS idx_task_events_task_time ON task_events(task_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_file_object_project ON file_object(project_id);
 CREATE INDEX IF NOT EXISTS idx_processed_event_device ON processed_event(device_id);

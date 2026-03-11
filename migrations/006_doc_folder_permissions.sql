@@ -5,7 +5,7 @@ CREATE TABLE IF NOT EXISTS doc_folders (
   project_id TEXT NOT NULL,
   path TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  FOREIGN KEY (project_id) REFERENCES projects(id)
+  FOREIGN KEY (project_id) REFERENCES projects(project_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_doc_folders_project_path
@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS doc_folder_permissions (
   updated_at TEXT NOT NULL DEFAULT (datetime('now')),
   PRIMARY KEY (folder_id, user_id),
   FOREIGN KEY (folder_id) REFERENCES doc_folders(folder_id),
-  FOREIGN KEY (project_id) REFERENCES projects(id),
+  FOREIGN KEY (project_id) REFERENCES projects(project_id),
   FOREIGN KEY (user_id) REFERENCES users(user_id)
 );
 

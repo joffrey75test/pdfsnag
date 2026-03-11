@@ -45,25 +45,18 @@ CREATE TABLE IF NOT EXISTS project_membership (
   invited_at TEXT,
   joined_at TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  FOREIGN KEY (project_id) REFERENCES projects(id),
+  FOREIGN KEY (project_id) REFERENCES projects(project_id),
   FOREIGN KEY (user_id) REFERENCES user(user_id),
   FOREIGN KEY (invited_by_user_id) REFERENCES user(user_id),
   UNIQUE (project_id, user_id)
 );
 
--- Add company_id to legacy projects (tenant_id remains for compatibility)
-ALTER TABLE projects ADD COLUMN company_id TEXT;
-
 CREATE INDEX IF NOT EXISTS idx_projects_company_id ON projects(company_id);
 CREATE INDEX IF NOT EXISTS idx_company_membership_company_user ON company_membership(company_id, user_id);
 CREATE INDEX IF NOT EXISTS idx_project_membership_project_user ON project_membership(project_id, user_id);
 
--- Backfill company from existing tenant_id (one company per tenant)
+-- Backfill company from projects.company_id.
 INSERT OR IGNORE INTO company (company_id, name, status, plan_tier)
-SELECT DISTINCT tenant_id, tenant_id, 'active', 'starter'
+SELECT DISTINCT company_id, company_id, 'active', 'starter'
 FROM projects
-WHERE tenant_id IS NOT NULL;
-
-UPDATE projects
-SET company_id = tenant_id
-WHERE company_id IS NULL;
+WHERE company_id IS NOT NULL;

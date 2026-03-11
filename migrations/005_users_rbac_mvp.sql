@@ -9,14 +9,20 @@ CREATE TABLE IF NOT EXISTS users (
   password_hash TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','suspended','invited','removed')),
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  last_login_at TEXT
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  last_login_at TEXT,
+  deleted_at TEXT,
+  archived_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS companies (
   company_id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','suspended','removed')),
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  deleted_at TEXT,
+  archived_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS company_memberships (
@@ -29,6 +35,8 @@ CREATE TABLE IF NOT EXISTS company_memberships (
   invited_at TEXT,
   joined_at TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  deleted_at TEXT,
   FOREIGN KEY (company_id) REFERENCES companies(company_id),
   FOREIGN KEY (user_id) REFERENCES users(user_id),
   FOREIGN KEY (invited_by_user_id) REFERENCES users(user_id),
@@ -46,7 +54,9 @@ CREATE TABLE IF NOT EXISTS project_memberships (
   invited_at TEXT,
   joined_at TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  FOREIGN KEY (project_id) REFERENCES projects(id),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  deleted_at TEXT,
+  FOREIGN KEY (project_id) REFERENCES projects(project_id),
   FOREIGN KEY (user_id) REFERENCES users(user_id),
   FOREIGN KEY (invited_by_user_id) REFERENCES users(user_id),
   UNIQUE (project_id, user_id)
@@ -59,7 +69,10 @@ CREATE TABLE IF NOT EXISTS lists (
   visibility TEXT NOT NULL CHECK (visibility IN ('public','private','shared')),
   created_by_user_id TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  FOREIGN KEY (project_id) REFERENCES projects(id),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  deleted_at TEXT,
+  archived_at TEXT,
+  FOREIGN KEY (project_id) REFERENCES projects(project_id),
   FOREIGN KEY (created_by_user_id) REFERENCES users(user_id)
 );
 
@@ -69,6 +82,8 @@ CREATE TABLE IF NOT EXISTS list_memberships (
   user_id TEXT NOT NULL,
   role TEXT NOT NULL CHECK (role IN ('collaborator','guest','subcontractor')),
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  deleted_at TEXT,
   FOREIGN KEY (list_id) REFERENCES lists(list_id),
   FOREIGN KEY (user_id) REFERENCES users(user_id),
   UNIQUE (list_id, user_id)
@@ -86,6 +101,7 @@ CREATE TABLE IF NOT EXISTS invite_tokens (
   accepted_at TEXT,
   revoked_at TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (invited_by_user_id) REFERENCES users(user_id)
 );
 

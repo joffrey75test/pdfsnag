@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS auth_compat (
   mode TEXT NOT NULL CHECK (mode IN ('token_only','user_only','mixed')),
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-  FOREIGN KEY (project_id) REFERENCES projects(id),
+  FOREIGN KEY (project_id) REFERENCES projects(project_id),
   UNIQUE (project_id)
 );
 

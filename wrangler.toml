@@ -20,8 +20,8 @@ name = "pdfsnag-staging"
 
 [[env.staging.d1_databases]]
 binding = "DB"
-database_name = "snag_db"
-database_id = "a4ab1da6-94e1-467b-9f3e-970aee1ab4f7"
+database_name = "snag_db_staging"
+database_id = "ba536cd8-a0e1-4a65-b2c1-9b462d108604"
 
 [[env.staging.r2_buckets]]
 binding = "FILES"

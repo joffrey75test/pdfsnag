@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS list_documents (
   created_by_user_id TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (list_id) REFERENCES lists(list_id),
-  FOREIGN KEY (document_id) REFERENCES documents(id),
+  FOREIGN KEY (document_id) REFERENCES documents(document_id),
   FOREIGN KEY (created_by_user_id) REFERENCES users(user_id),
   UNIQUE (list_id, document_id)
 );

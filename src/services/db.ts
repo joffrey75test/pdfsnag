@@ -15,7 +15,7 @@ export type AppBindings = {
 
 export type AppVariables = {
   auth: AuthClaims;
-  tenantId: string;
+  companyId: string;
   projectId: string;
   scope: "read" | "write";
   actorId: string;
