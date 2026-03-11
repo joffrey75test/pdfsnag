@@ -7,6 +7,7 @@ import { installMobilePinch } from "./lib/pinch.js";
 import { bindThumbnailSync, buildThumbnails } from "./lib/thumbnails.js";
 import { installAnnotationTools } from "./lib/annotations.js";
 import { installCloudTool } from "./lib/cloud.js";
+import { loadSession as loadUsersSession } from "./lib/users-api.js";
 
 const ui = getUI();
 const state = createViewer(ui);
@@ -24,6 +25,159 @@ window.__drawingStyle = drawingStyle;
 let selectedAnnotation = null;
 let replyParentId = null;
 let cloudTool = null;
+let activeDocumentContext = null;
+let contentSyncTimer = 0;
+
+function isPersistedAnnotationId(annotationId) {
+  return typeof annotationId === "string" && annotationId.startsWith("ann_");
+}
+
+function syncCloudAnnotationsFromTool() {
+  const next = cloudTool?.getAnnotations?.() || [];
+  cloudAnnotations.splice(0, cloudAnnotations.length, ...next);
+  window.__cloudAnnotations = cloudAnnotations;
+}
+
+async function apiRequest(path, options = {}) {
+  const usersSession = loadUsersSession();
+  const authHeaders = usersSession?.jwtToken ? { Authorization: `Bearer ${usersSession.jwtToken}` } : {};
+
+  const res = await fetch(path, {
+    ...options,
+    headers: {
+      ...authHeaders,
+      ...(options.headers || {}),
+    },
+  });
+
+  const isJson = (res.headers.get("content-type") || "").includes("application/json");
+  const payload = isJson ? await res.json() : await res.text();
+
+  if (!res.ok) {
+    const msg = payload && typeof payload === "object" && payload.error ? payload.error : `HTTP ${res.status}`;
+    throw new Error(msg);
+  }
+
+  return payload;
+}
+
+function getAnnotationContext() {
+  if (!activeDocumentContext?.projectId || !activeDocumentContext?.docId) return null;
+  return {
+    projectId: String(activeDocumentContext.projectId),
+    documentId: String(activeDocumentContext.docId),
+  };
+}
+
+function toBackendAnnotationPayload(annotation) {
+  return {
+    page: Number(annotation?.page),
+    geometry: annotation?.geometry,
+    style: annotation?.style,
+    content: annotation?.content || { text: "", tags: [] },
+    discussion: Array.isArray(annotation?.discussion) ? annotation.discussion : [],
+  };
+}
+
+async function fetchCloudAnnotationsFromApi() {
+  const ctx = getAnnotationContext();
+  if (!ctx) return [];
+
+  const payload = await apiRequest(
+    `/api/documents/projects/${encodeURIComponent(ctx.projectId)}/documents/${encodeURIComponent(ctx.documentId)}/annotations`
+  );
+  return Array.isArray(payload?.annotations) ? payload.annotations : [];
+}
+
+async function createCloudAnnotationInApi(annotation) {
+  const ctx = getAnnotationContext();
+  if (!ctx) return null;
+
+  const payload = await apiRequest(
+    `/api/documents/projects/${encodeURIComponent(ctx.projectId)}/documents/${encodeURIComponent(ctx.documentId)}/annotations`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(toBackendAnnotationPayload(annotation)),
+    }
+  );
+  return payload?.annotation || null;
+}
+
+async function patchCloudAnnotationInApi(annotation) {
+  const ctx = getAnnotationContext();
+  if (!ctx || !isPersistedAnnotationId(annotation?.id)) return null;
+
+  const payload = await apiRequest(
+    `/api/documents/projects/${encodeURIComponent(ctx.projectId)}/documents/${encodeURIComponent(ctx.documentId)}/annotations/${encodeURIComponent(annotation.id)}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        geometry: annotation.geometry,
+        style: annotation.style,
+        content: annotation.content || { text: "", tags: [] },
+        discussion: Array.isArray(annotation.discussion) ? annotation.discussion : [],
+        status: annotation.status || "active",
+      }),
+    }
+  );
+  return payload?.annotation || null;
+}
+
+async function deleteCloudAnnotationInApi(annotationId) {
+  const ctx = getAnnotationContext();
+  if (!ctx || !isPersistedAnnotationId(annotationId)) return;
+
+  await apiRequest(
+    `/api/documents/projects/${encodeURIComponent(ctx.projectId)}/documents/${encodeURIComponent(ctx.documentId)}/annotations/${encodeURIComponent(annotationId)}`,
+    { method: "DELETE" }
+  );
+}
+
+async function syncCreatedAnnotation(annotation) {
+  if (!getAnnotationContext()) return;
+  try {
+    const saved = await createCloudAnnotationInApi(annotation);
+    if (saved?.id) {
+      cloudTool?.replaceAnnotation?.(annotation.id, saved);
+      syncCloudAnnotationsFromTool();
+      setStatus(ui, "Annotation enregistrée");
+    }
+  } catch (error) {
+    setStatus(ui, `Annotation locale uniquement: ${error instanceof Error ? error.message : "unknown"}`);
+  }
+}
+
+async function syncUpdatedAnnotation(annotation) {
+  if (!annotation || !getAnnotationContext() || !isPersistedAnnotationId(annotation.id)) return;
+  try {
+    const saved = await patchCloudAnnotationInApi(annotation);
+    if (saved?.id) {
+      cloudTool?.replaceAnnotation?.(annotation.id, saved);
+      syncCloudAnnotationsFromTool();
+    }
+  } catch (error) {
+    setStatus(ui, `Échec sync annotation: ${error instanceof Error ? error.message : "unknown"}`);
+  }
+}
+
+async function loadCloudAnnotationsForActiveDocument() {
+  if (!getAnnotationContext()) {
+    cloudTool?.setAnnotations?.([]);
+    syncCloudAnnotationsFromTool();
+    return;
+  }
+
+  try {
+    const annotations = await fetchCloudAnnotationsFromApi();
+    cloudTool?.setAnnotations?.(annotations);
+    syncCloudAnnotationsFromTool();
+    setStatus(ui, `Annotations chargées: ${annotations.length}`);
+  } catch (error) {
+    setStatus(ui, `Annotations non synchronisées: ${error instanceof Error ? error.message : "unknown"}`);
+  }
+}
 
 function setReplyTarget(comment) {
   if (!ui.replyTarget || !ui.cancelReplyBtn) return;
@@ -130,6 +284,8 @@ function renderSelectedComment(annotation, options = {}) {
   if (!annotation) {
     ui.commentMeta.textContent = "Aucun objet sélectionné";
     ui.commentText.value = "";
+    ui.commentText.disabled = true;
+    ui.commentText.readOnly = true;
     if (ui.deleteSelectedAnnotationBtn) ui.deleteSelectedAnnotationBtn.disabled = true;
     if (ui.newCommentText) ui.newCommentText.disabled = true;
     if (ui.addCommentBtn) ui.addCommentBtn.disabled = true;
@@ -140,6 +296,8 @@ function renderSelectedComment(annotation, options = {}) {
 
   ui.commentMeta.textContent = `Nuage • page ${annotation.page} • ${annotation.id}`;
   ui.commentText.value = annotation.content?.text || "";
+  ui.commentText.disabled = false;
+  ui.commentText.readOnly = false;
   if (ui.deleteSelectedAnnotationBtn) ui.deleteSelectedAnnotationBtn.disabled = !canDelete;
   if (ui.newCommentText) ui.newCommentText.disabled = false;
   if (ui.addCommentBtn) ui.addCommentBtn.disabled = false;
@@ -191,12 +349,14 @@ cloudTool = installCloudTool(
   () => annotationMode === "cloud",
   () => annotationMode === annotationTypes.NONE,
   () => drawingStyle,
+  () => state.pdfViewer.currentScale || 1,
   (annotation) => {
     cloudAnnotations.push(annotation);
     setCommentsVisible(true);
     // Show discussion panel on the newly created object, without selecting it on-canvas.
     renderSelectedComment(annotation, { canDelete: false });
-    // Exposed for quick manual test and future API wiring.
+    syncCloudAnnotationsFromTool();
+    void syncCreatedAnnotation(annotation);
     window.__cloudAnnotations = cloudAnnotations;
     console.log("Cloud annotation created:", annotation);
   },
@@ -212,13 +372,19 @@ window.addEventListener("keydown", (e) => {
   setStatus(ui, "Sélection annulée");
 });
 
-ui.deleteSelectedAnnotationBtn?.addEventListener("click", () => {
+ui.deleteSelectedAnnotationBtn?.addEventListener("click", async () => {
   const deleted = cloudTool?.deleteSelectedCloud?.();
   if (!deleted) {
     setStatus(ui, "Aucun objet sélectionné");
     return;
   }
-  setStatus(ui, `Nuage supprimé (soft delete)`);
+  syncCloudAnnotationsFromTool();
+  try {
+    await deleteCloudAnnotationInApi(deleted.id);
+    setStatus(ui, "Nuage supprimé");
+  } catch (error) {
+    setStatus(ui, `Suppression locale uniquement: ${error instanceof Error ? error.message : "unknown"}`);
+  }
   window.__cloudAnnotations = cloudAnnotations;
   console.log("Cloud annotation soft-deleted:", deleted);
 });
@@ -246,8 +412,26 @@ ui.addCommentBtn?.addEventListener("click", () => {
   ui.newCommentText.value = "";
   setReplyTarget(null);
   renderSelectedComment(selectedAnnotation);
+  syncCloudAnnotationsFromTool();
+  void syncUpdatedAnnotation(selectedAnnotation);
   window.__cloudAnnotations = cloudAnnotations;
   console.log("Comment added:", comment);
+});
+
+ui.commentText?.addEventListener("input", () => {
+  if (!selectedAnnotation || !ui.commentText) return;
+  if (!selectedAnnotation.content || typeof selectedAnnotation.content !== "object") {
+    selectedAnnotation.content = { text: "", tags: [] };
+  }
+
+  selectedAnnotation.content.text = ui.commentText.value;
+  selectedAnnotation.updatedAt = new Date().toISOString();
+  syncCloudAnnotationsFromTool();
+
+  clearTimeout(contentSyncTimer);
+  contentSyncTimer = setTimeout(() => {
+    void syncUpdatedAnnotation(selectedAnnotation);
+  }, 350);
 });
 
 ui.strokeColorInput?.addEventListener("input", refreshDrawingStyleFromUI);
@@ -361,6 +545,7 @@ if (ui.commentResizer) {
 
 window.addEventListener("resize", () => {
   scheduleThumbsRebuild();
+  cloudTool?.refresh?.();
 });
 
 function hasDoc() {
@@ -387,26 +572,49 @@ async function openFromGedContextIfAny() {
     return;
   }
   localStorage.removeItem("pdfsnag_open_doc_context");
+  activeDocumentContext = context;
 
-  const url = `/projects/${encodeURIComponent(context.projectId)}/documents/${encodeURIComponent(docId)}/content`;
-  const res = await fetch(url, {
-    headers: {
-      "x-tenant-id": context.tenantId,
-      Authorization: `Bearer ${context.projectToken}`,
-    },
-  });
-
-  if (!res.ok) {
-    setStatus(ui, `Erreur ouverture GED (${res.status})`);
-    return;
+  let blob;
+  let contentType = "application/pdf";
+  if (context.authMode === "user") {
+    const jwtToken = context.jwtToken || loadUsersSession().jwtToken;
+    const dlPayload = await apiRequest(`/api/documents/${encodeURIComponent(docId)}/download`, {
+      headers: jwtToken ? { Authorization: `Bearer ${jwtToken}` } : {},
+    });
+    const downloadUrl = dlPayload?.downloadUrl;
+    if (!downloadUrl) {
+      setStatus(ui, "Erreur ouverture GED (downloadUrl manquant)");
+      return;
+    }
+    const res = await fetch(downloadUrl);
+    if (!res.ok) {
+      setStatus(ui, `Erreur ouverture GED (${res.status})`);
+      return;
+    }
+    blob = await res.blob();
+    contentType = res.headers.get("content-type") || contentType;
+  } else {
+    const url = `/projects/${encodeURIComponent(context.projectId)}/documents/${encodeURIComponent(docId)}/content`;
+    const companyId = context.companyId || "";
+    const res = await fetch(url, {
+      headers: {
+        "x-company-id": companyId,
+        Authorization: `Bearer ${context.projectToken}`,
+      },
+    });
+    if (!res.ok) {
+      setStatus(ui, `Erreur ouverture GED (${res.status})`);
+      return;
+    }
+    blob = await res.blob();
+    contentType = res.headers.get("content-type") || contentType;
   }
 
-  const blob = await res.blob();
-  const type = res.headers.get("content-type") || "application/pdf";
-  const file = new File([blob], `${context.title || "document"}.pdf`, { type });
+  const file = new File([blob], `${context.title || "document"}.pdf`, { type: contentType || "application/pdf" });
 
   await openFromFile(state, ui, file);
   await buildThumbnails(state, ui);
+  await loadCloudAnnotationsForActiveDocument();
   setStatus(ui, `Ouvert depuis GED: ${context.title || docId}`);
 }
 
@@ -414,8 +622,11 @@ ui.fileInput?.addEventListener("change", async (e) => {
   const file = e.target.files?.[0];
   if (!file) return;
   try {
+    activeDocumentContext = null;
     await openFromFile(state, ui, file);
     await buildThumbnails(state, ui);
+    cloudTool?.setAnnotations?.([]);
+    syncCloudAnnotationsFromTool();
   } catch (err) {
     console.error(err);
     setStatus(ui, "Erreur de chargement");
@@ -426,7 +637,15 @@ state.eventBus.on("pagesinit", () => {
   state.pdfViewer.currentScale = 1.0;
   setZoomLabel(ui, state.pdfViewer.currentScale || 1);
   applyPdfJsStyle();
+  cloudTool?.refresh?.();
   renderSelectedComment(null);
+});
+
+state.eventBus.on("scalechanging", () => {
+  // Reproject cloud overlays to current page viewport dimensions.
+  cloudTool?.refresh?.();
+  setTimeout(() => cloudTool?.refresh?.(), 60);
+  setTimeout(() => cloudTool?.refresh?.(), 180);
 });
 
 installDesktopZoom(state, ui);

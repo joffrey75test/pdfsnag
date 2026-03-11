@@ -3,15 +3,16 @@ const STORAGE_KEY = "pdfsnag_ged_session_v1";
 export function loadSession() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return { tenantId: "", projectId: "", projectToken: "" };
+    if (!raw) return { companyId: "", projectId: "", projectToken: "" };
     const parsed = JSON.parse(raw);
+    const companyId = parsed.companyId || "";
     return {
-      tenantId: parsed.tenantId || "",
+      companyId,
       projectId: parsed.projectId || "",
       projectToken: parsed.projectToken || "",
     };
   } catch {
-    return { tenantId: "", projectId: "", projectToken: "" };
+    return { companyId: "", projectId: "", projectToken: "" };
   }
 }
 
@@ -20,16 +21,18 @@ export function saveSession(session) {
 }
 
 function buildHeaders(session, extra = {}) {
+  const companyId = session.companyId || "";
   return {
-    "x-tenant-id": session.tenantId,
+    "x-company-id": companyId,
     Authorization: `Bearer ${session.projectToken}`,
     ...extra,
   };
 }
 
 async function request(session, path, options = {}) {
-  if (!session.tenantId || !session.projectId || !session.projectToken) {
-    throw new Error("Session GED incomplète (tenant/projet/token)");
+  const companyId = session.companyId || "";
+  if (!companyId || !session.projectId || !session.projectToken) {
+    throw new Error("Session GED incomplète (company/projet/token)");
   }
 
   const res = await fetch(path, {
