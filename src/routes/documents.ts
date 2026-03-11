@@ -58,8 +58,11 @@ function validateCloudAnnotation(payload: unknown) {
     "active",
     "deleted",
     "archived",
+    "open",
+    "resolved",
+    "hidden",
   ].includes(payload.status as string)) {
-    errors.push("status must be one of: active, deleted, archived.");
+    errors.push("status must be one of: open, resolved, hidden, archived.");
   }
   if ("deletedAt" in payload && !isIsoDateTime(payload.deletedAt)) {
     errors.push("deletedAt must be a valid ISO date-time string.");
@@ -72,7 +75,7 @@ function validateCloudAnnotation(payload: unknown) {
   if (!isObject(geometry)) {
     errors.push("geometry must be an object.");
   } else {
-    const allowedGeometry = ["unit", "polygon", "bbox", "rotation"];
+    const allowedGeometry = ["unit", "polygon", "bbox", "rotation", "pageSize"];
     if (!hasOnlyAllowedKeys(geometry, allowedGeometry)) {
       errors.push("geometry contains unsupported properties.");
     }
@@ -80,8 +83,8 @@ function validateCloudAnnotation(payload: unknown) {
       if (!(field in geometry)) errors.push(`Missing required field: geometry.${field}`);
     }
 
-    if (!["pdf", "viewport"].includes(geometry.unit as string)) {
-      errors.push("geometry.unit must be 'pdf' or 'viewport'.");
+    if (!["pdf", "viewport", "normalized"].includes(geometry.unit as string)) {
+      errors.push("geometry.unit must be 'pdf', 'viewport' or 'normalized'.");
     }
     if (!Array.isArray(geometry.polygon) || geometry.polygon.length < 3) {
       errors.push("geometry.polygon must be an array with at least 3 points.");
@@ -113,6 +116,22 @@ function validateCloudAnnotation(payload: unknown) {
 
     if (!isFiniteNumber(geometry.rotation)) {
       errors.push("geometry.rotation must be a finite number.");
+    }
+
+    if ("pageSize" in geometry) {
+      if (!isObject(geometry.pageSize)) {
+        errors.push("geometry.pageSize must be an object.");
+      } else {
+        if (!hasOnlyAllowedKeys(geometry.pageSize, ["width", "height"])) {
+          errors.push("geometry.pageSize contains unsupported properties.");
+        }
+        if (!isFiniteNumber(geometry.pageSize.width) || geometry.pageSize.width <= 0) {
+          errors.push("geometry.pageSize.width must be a number > 0.");
+        }
+        if (!isFiniteNumber(geometry.pageSize.height) || geometry.pageSize.height <= 0) {
+          errors.push("geometry.pageSize.height must be a number > 0.");
+        }
+      }
     }
   }
 
@@ -225,6 +244,124 @@ function validateCloudAnnotation(payload: unknown) {
   return errors;
 }
 
+type NormalizedGeometry = {
+  bbox: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
+  polygon: Array<{ x: number; y: number }>;
+  rotation: number;
+  pageSize: { width: number; height: number } | null;
+};
+
+function clamp01(value: number) {
+  if (!Number.isFinite(value)) return 0;
+  if (value < 0) return 0;
+  if (value > 1) return 1;
+  return value;
+}
+
+function normalizeGeometry(geometry: Record<string, unknown>) {
+  const unit = String(geometry.unit || "");
+  const bboxRaw = geometry.bbox as Record<string, unknown>;
+  const polygonRaw = geometry.polygon as Array<Record<string, unknown>>;
+  const rotation = Number(geometry.rotation ?? 0);
+  const pageSizeRaw = geometry.pageSize as Record<string, unknown> | undefined;
+  const pageWidth = Number(pageSizeRaw?.width);
+  const pageHeight = Number(pageSizeRaw?.height);
+  const hasPageSize = Number.isFinite(pageWidth) && pageWidth > 0 && Number.isFinite(pageHeight) && pageHeight > 0;
+
+  if (!["viewport", "pdf", "normalized"].includes(unit)) {
+    return { ok: false as const, error: "geometry.unit must be viewport|pdf|normalized." };
+  }
+
+  const bboxX = Number(bboxRaw?.x);
+  const bboxY = Number(bboxRaw?.y);
+  const bboxW = Number(bboxRaw?.width);
+  const bboxH = Number(bboxRaw?.height);
+  if (![bboxX, bboxY, bboxW, bboxH].every((n) => Number.isFinite(n))) {
+    return { ok: false as const, error: "geometry.bbox values must be finite numbers." };
+  }
+  if (bboxW <= 0 || bboxH <= 0) {
+    return { ok: false as const, error: "geometry.bbox width/height must be > 0." };
+  }
+
+  if (!Array.isArray(polygonRaw) || polygonRaw.length < 3) {
+    return { ok: false as const, error: "geometry.polygon must have at least 3 points." };
+  }
+
+  if (unit !== "normalized" && !hasPageSize) {
+    return { ok: false as const, error: "geometry.pageSize (width,height) is required for viewport/pdf geometry." };
+  }
+
+  const toNorm = (v: number, axis: "x" | "y") => {
+    if (unit === "normalized") return clamp01(v);
+    return clamp01(v / (axis === "x" ? pageWidth : pageHeight));
+  };
+
+  const normalizedPolygon = polygonRaw.map((p, i) => {
+    const x = Number(p?.x);
+    const y = Number(p?.y);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) {
+      throw new Error(`geometry.polygon[${i}] x/y must be finite numbers.`);
+    }
+    return { x: toNorm(x, "x"), y: toNorm(y, "y") };
+  });
+
+  const normalized: NormalizedGeometry = {
+    bbox: {
+      x: toNorm(bboxX, "x"),
+      y: toNorm(bboxY, "y"),
+      width: unit === "normalized" ? clamp01(bboxW) : clamp01(bboxW / pageWidth),
+      height: unit === "normalized" ? clamp01(bboxH) : clamp01(bboxH / pageHeight),
+    },
+    polygon: normalizedPolygon,
+    rotation: Number.isFinite(rotation) ? rotation : 0,
+    pageSize: hasPageSize ? { width: pageWidth, height: pageHeight } : null,
+  };
+
+  if (normalized.bbox.width <= 0 || normalized.bbox.height <= 0) {
+    return { ok: false as const, error: "Normalized bbox width/height must be > 0." };
+  }
+
+  return { ok: true as const, geometry: normalized };
+}
+
+function parseJsonSafe<T = Record<string, unknown>>(value: string | null) {
+  if (!value) return null;
+  try {
+    return JSON.parse(value) as T;
+  } catch {
+    return null;
+  }
+}
+
+function projectToViewport(
+  normalized: NormalizedGeometry,
+  pageWidth: number | null,
+  pageHeight: number | null
+) {
+  if (!Number.isFinite(pageWidth) || !Number.isFinite(pageHeight) || (pageWidth as number) <= 0 || (pageHeight as number) <= 0) {
+    return null;
+  }
+  const w = pageWidth as number;
+  const h = pageHeight as number;
+  return {
+    unit: "viewport",
+    polygon: normalized.polygon.map((p) => ({ x: p.x * w, y: p.y * h })),
+    bbox: {
+      x: normalized.bbox.x * w,
+      y: normalized.bbox.y * h,
+      width: normalized.bbox.width * w,
+      height: normalized.bbox.height * h,
+    },
+    rotation: normalized.rotation,
+    pageSize: { width: w, height: h },
+  };
+}
+
 export const documentsRouter = new Hono<AppEnv>();
 
 documentsRouter.use("/projects/:projectId/*", requireProjectRole("guest"));
@@ -246,27 +383,32 @@ function fileKey(projectId: string, fileId: string) {
   return `u/${projectId}/${fileId}`;
 }
 
-async function ensureUserActor(c: { env: AppEnv["Bindings"] }, userId: string, tenantId: string) {
+async function ensureUserActor(c: { env: AppEnv["Bindings"] }, userId: string, companyId: string) {
   const actorId = `user_${userId}`;
   await c.env.DB.prepare(
-    `INSERT OR IGNORE INTO actors (id, tenant_id, type, label, created_at)
+    `INSERT OR IGNORE INTO actors (id, company_id, type, label, created_at)
      VALUES (?, ?, 'user', ?, datetime('now'))`
   )
-    .bind(actorId, tenantId, `user:${userId}`)
+    .bind(actorId, companyId, `user:${userId}`)
     .run();
   return actorId;
 }
 
+function userIdFromActorId(actorId: string | null | undefined) {
+  if (typeof actorId !== "string") return null;
+  return actorId.startsWith("user_") ? actorId.slice(5) : null;
+}
+
 async function hasDocumentReadAccess(c: { env: AppEnv["Bindings"] }, projectId: string, docId: string, userId: string) {
   const row = await c.env.DB.prepare(
-    `SELECT d.id
+    `SELECT d.document_id AS id
      FROM documents d
-     LEFT JOIN doc_folders df
-       ON df.folder_id = d.folder_id
+     LEFT JOIN folders df
+       ON df.id = d.folder_id
       AND df.project_id = d.project_id
-     WHERE d.id = ?
+     WHERE d.document_id = ?
        AND d.project_id = ?
-       AND d.status != 'DELETED'
+       AND d.status != 'deleted'
        AND (
          NOT EXISTS (
            SELECT 1
@@ -278,8 +420,8 @@ async function hasDocumentReadAccess(c: { env: AppEnv["Bindings"] }, projectId: 
          OR EXISTS (
            SELECT 1
            FROM doc_folder_permissions p
-           JOIN doc_folders pf
-             ON pf.folder_id = p.folder_id
+           JOIN folders pf
+             ON pf.id = p.folder_id
             AND pf.project_id = p.project_id
            WHERE p.project_id = d.project_id
              AND p.user_id = ?
@@ -294,7 +436,7 @@ async function hasDocumentReadAccess(c: { env: AppEnv["Bindings"] }, projectId: 
            JOIN lists l0
              ON l0.list_id = ld0.list_id
             AND l0.project_id = d.project_id
-           WHERE ld0.document_id = d.id
+           WHERE ld0.document_id = d.document_id
          )
          OR EXISTS (
            SELECT 1
@@ -305,17 +447,17 @@ async function hasDocumentReadAccess(c: { env: AppEnv["Bindings"] }, projectId: 
            LEFT JOIN list_memberships lm
              ON lm.list_id = l.list_id
             AND lm.user_id = ?
-           WHERE ld.document_id = d.id
+           WHERE ld.document_id = d.document_id
              AND (
                l.visibility = 'public'
                OR (l.visibility = 'shared' AND lm.user_id IS NOT NULL)
-               OR (l.visibility = 'private' AND (lm.user_id IS NOT NULL OR l.created_by_user_id = ?))
+               OR (l.visibility = 'private' AND lm.user_id IS NOT NULL)
              )
          )
        )
      LIMIT 1`
   )
-    .bind(docId, projectId, userId, userId, userId, userId)
+    .bind(docId, projectId, userId, userId, userId)
     .first<{ id: string }>();
 
   return Boolean(row?.id);
@@ -336,6 +478,301 @@ documentsRouter.post("/annotations/cloud", async (c) => {
 
   return c.json({ ok: true, annotation: payload }, 201);
 });
+
+documentsRouter.post("/projects/:projectId/documents/:documentId/annotations", requireProjectRole("collaborator"), async (c) => {
+  const auth = c.get("auth");
+  const projectId = c.req.param("projectId");
+  const documentId = c.req.param("documentId");
+  const body = await parseJsonBody(c);
+
+  const doc = await c.env.DB.prepare(
+    `SELECT document_id AS id, status, current_version_id
+     FROM documents
+     WHERE document_id = ? AND project_id = ?
+     LIMIT 1`
+  )
+    .bind(documentId, projectId)
+    .first<{ id: string; status: string; current_version_id: string | null }>();
+  if (!doc || doc.status === "deleted") return c.json({ ok: false, error: "Document not found." }, 404);
+  if (!doc.current_version_id) return c.json({ ok: false, error: "Document has no active version." }, 409);
+
+  const canRead = await hasDocumentReadAccess(c, projectId, documentId, auth.user_id);
+  if (!canRead) return c.json({ ok: false, error: "No document access (folder/list policy)." }, 403);
+
+  const payloadIn = isObject(body) ? { ...body } : {};
+  const page = Number(payloadIn.page);
+  const type = typeof payloadIn.type === "string" && payloadIn.type.trim() ? payloadIn.type.trim() : "cloud";
+  const rawStatusIn = typeof payloadIn.status === "string" ? payloadIn.status.toLowerCase() : "open";
+  const statusIn = rawStatusIn === "draft" || rawStatusIn === "review" || rawStatusIn === "active"
+    ? "open"
+    : rawStatusIn === "approved"
+      ? "resolved"
+      : rawStatusIn === "deleted"
+        ? "hidden"
+        : rawStatusIn;
+  if (!Number.isInteger(page) || page < 1) return c.json({ ok: false, error: "page must be an integer >= 1." }, 400);
+  if (!["open", "resolved", "hidden", "archived"].includes(statusIn)) {
+    return c.json({ ok: false, error: "status must be open|resolved|hidden|archived." }, 400);
+  }
+  const now = new Date().toISOString();
+  const annotationId = `ann_${crypto.randomUUID()}`;
+  const actorId = await ensureUserActor(c, auth.user_id, auth.company_id);
+  const payload = {
+    ...payloadIn,
+    id: annotationId,
+    documentId,
+    documentVersionId: doc.current_version_id,
+    page,
+    type,
+    status: statusIn,
+    author: isObject(payloadIn.author) ? payloadIn.author : { userId: auth.user_id, actorId },
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  await c.env.DB.prepare(
+    `INSERT INTO document_annotations (
+      annotation_id, document_version_id, document_id, project_id, created_by_actor_id, page, type, payload_json, status, created_at, updated_at
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  )
+    .bind(
+      annotationId,
+      doc.current_version_id,
+      documentId,
+      projectId,
+      actorId,
+      page,
+      type,
+      JSON.stringify(payload),
+      statusIn,
+      now,
+      now
+    )
+    .run();
+
+  return c.json({ ok: true, annotation: payload }, 201);
+});
+
+documentsRouter.get("/projects/:projectId/documents/:documentId/annotations", async (c) => {
+  const auth = c.get("auth");
+  const projectId = c.req.param("projectId");
+  const documentId = c.req.param("documentId");
+  const includeDeleted = c.req.query("includeDeleted") === "1";
+
+  const doc = await c.env.DB.prepare(
+    `SELECT document_id AS id, status
+     FROM documents
+     WHERE document_id = ? AND project_id = ?
+     LIMIT 1`
+  )
+    .bind(documentId, projectId)
+    .first<{ id: string; status: string }>();
+  if (!doc || doc.status === "deleted") return c.json({ ok: false, error: "Document not found." }, 404);
+
+  const canRead = await hasDocumentReadAccess(c, projectId, documentId, auth.user_id);
+  if (!canRead) return c.json({ ok: false, error: "No document access (folder/list policy)." }, 403);
+
+  const rows = await c.env.DB.prepare(
+    `SELECT da.annotation_id, da.document_version_id, da.document_id, da.page, da.type, da.status,
+            da.payload_json, da.created_by_actor_id, da.created_at, da.updated_at
+     FROM document_annotations da
+     WHERE da.document_id = ? AND da.project_id = ?
+       AND (? = 1 OR status NOT IN ('hidden','archived'))
+     ORDER BY da.created_at ASC`
+  )
+    .bind(documentId, projectId, includeDeleted ? 1 : 0)
+    .all<{
+      annotation_id: string;
+      document_version_id: string | null;
+      document_id: string;
+      page: number;
+      type: string;
+      status: string;
+      payload_json: string;
+      created_by_actor_id: string;
+      created_at: string;
+      updated_at: string;
+    }>();
+
+  const annotations = (rows.results ?? []).map((row) => {
+    const payload = parseJsonSafe<Record<string, unknown>>(row.payload_json) ?? {};
+    const fallbackUserId = userIdFromActorId(row.created_by_actor_id);
+    return {
+      ...payload,
+      id: row.annotation_id,
+      documentId: row.document_id,
+      documentVersionId: row.document_version_id,
+      page: row.page,
+      type: row.type,
+      status: row.status,
+      author: isObject(payload.author)
+        ? payload.author
+        : (fallbackUserId ? { userId: fallbackUserId, actorId: row.created_by_actor_id } : { actorId: row.created_by_actor_id }),
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  });
+
+  return c.json({ ok: true, documentId, projectId, annotations });
+});
+
+documentsRouter.patch(
+  "/projects/:projectId/documents/:documentId/annotations/:annotationId",
+  requireProjectRole("collaborator"),
+  async (c) => {
+    const auth = c.get("auth");
+    const projectId = c.req.param("projectId");
+    const documentId = c.req.param("documentId");
+    const annotationId = c.req.param("annotationId");
+    const body = await parseJsonBody(c);
+
+    const doc = await c.env.DB.prepare(
+      `SELECT document_id AS id, status
+       FROM documents
+       WHERE document_id = ? AND project_id = ?
+       LIMIT 1`
+    )
+      .bind(documentId, projectId)
+      .first<{ id: string; status: string }>();
+    if (!doc || doc.status === "deleted") return c.json({ ok: false, error: "Document not found." }, 404);
+
+    const canRead = await hasDocumentReadAccess(c, projectId, documentId, auth.user_id);
+    if (!canRead) return c.json({ ok: false, error: "No document access (folder/list policy)." }, 403);
+
+    const current = await c.env.DB.prepare(
+      `SELECT da.annotation_id, da.document_version_id, da.document_id, da.page, da.type, da.status, da.payload_json, da.created_by_actor_id,
+              da.created_at, da.updated_at
+       FROM document_annotations da
+       WHERE da.annotation_id = ? AND da.document_id = ? AND da.project_id = ?
+       LIMIT 1`
+    )
+      .bind(annotationId, documentId, projectId)
+      .first<{
+        annotation_id: string;
+        document_version_id: string | null;
+        document_id: string;
+        page: number;
+        type: string;
+        status: string;
+        payload_json: string;
+        created_by_actor_id: string;
+        created_at: string;
+        updated_at: string;
+      }>();
+    if (!current) return c.json({ ok: false, error: "Annotation not found." }, 404);
+
+    const nextStatusRaw = (body as { status?: unknown } | null)?.status;
+    const nextStatusCandidate = nextStatusRaw === undefined ? current.status : String(nextStatusRaw).toLowerCase();
+    const nextStatus = nextStatusCandidate === "draft" || nextStatusCandidate === "review" || nextStatusCandidate === "active"
+      ? "open"
+      : nextStatusCandidate === "approved"
+        ? "resolved"
+        : nextStatusCandidate === "deleted"
+          ? "hidden"
+          : nextStatusCandidate;
+    if (!["open", "resolved", "hidden", "archived"].includes(nextStatus)) {
+      return c.json({ ok: false, error: "status must be open|resolved|hidden|archived." }, 400);
+    }
+
+    const currentPayload = parseJsonSafe<Record<string, unknown>>(current.payload_json) ?? {};
+    const patchPayload = isObject(body) ? body : {};
+    const nextPayload = {
+      ...currentPayload,
+      ...patchPayload,
+      id: annotationId,
+      documentId: current.document_id,
+      documentVersionId: current.document_version_id,
+      status: nextStatus,
+    };
+    const nextPage = Number(nextPayload.page);
+    const nextType = typeof nextPayload.type === "string" && nextPayload.type.trim() ? nextPayload.type.trim() : current.type;
+    if (!Number.isInteger(nextPage) || nextPage < 1) {
+      return c.json({ ok: false, error: "page must be an integer >= 1." }, 400);
+    }
+
+    const now = new Date().toISOString();
+
+    await c.env.DB.prepare(
+      `UPDATE document_annotations
+       SET page = ?, type = ?, payload_json = ?, status = ?, updated_at = ?
+       WHERE annotation_id = ? AND project_id = ?`
+    )
+      .bind(
+        nextPage,
+        nextType,
+        JSON.stringify(nextPayload),
+        nextStatus,
+        now,
+        annotationId,
+        projectId
+      )
+      .run();
+
+    const fallbackUserId = userIdFromActorId(current.created_by_actor_id);
+    return c.json({
+      ok: true,
+      annotation: {
+        ...nextPayload,
+        page: nextPage,
+        type: nextType,
+        status: nextStatus,
+        author: isObject(nextPayload.author)
+          ? nextPayload.author
+          : (fallbackUserId ? { userId: fallbackUserId, actorId: current.created_by_actor_id } : { actorId: current.created_by_actor_id }),
+        createdAt: current.created_at,
+        updatedAt: now,
+      },
+    });
+  }
+);
+
+documentsRouter.delete(
+  "/projects/:projectId/documents/:documentId/annotations/:annotationId",
+  requireProjectRole("collaborator"),
+  async (c) => {
+    const auth = c.get("auth");
+    const projectId = c.req.param("projectId");
+    const documentId = c.req.param("documentId");
+    const annotationId = c.req.param("annotationId");
+
+    const doc = await c.env.DB.prepare(
+      `SELECT document_id AS id, status
+       FROM documents
+       WHERE document_id = ? AND project_id = ?
+       LIMIT 1`
+    )
+      .bind(documentId, projectId)
+      .first<{ id: string; status: string }>();
+    if (!doc || doc.status === "deleted") return c.json({ ok: false, error: "Document not found." }, 404);
+
+    const canRead = await hasDocumentReadAccess(c, projectId, documentId, auth.user_id);
+    if (!canRead) return c.json({ ok: false, error: "No document access (folder/list policy)." }, 403);
+
+    const current = await c.env.DB.prepare(
+      `SELECT da.annotation_id, da.document_version_id, da.document_id, da.payload_json
+       FROM document_annotations da
+       WHERE da.annotation_id = ? AND da.document_id = ? AND da.project_id = ?
+       LIMIT 1`
+    )
+      .bind(annotationId, documentId, projectId)
+      .first<{ annotation_id: string; document_version_id: string; document_id: string; payload_json: string }>();
+    if (!current) return c.json({ ok: false, error: "Annotation not found." }, 404);
+
+    const currentPayload = parseJsonSafe<Record<string, unknown>>(current.payload_json) ?? {};
+    const now = new Date().toISOString();
+    const nextPayload = { ...currentPayload, status: "hidden", updatedAt: now };
+    const result = await c.env.DB.prepare(
+      `UPDATE document_annotations
+       SET status = ?, payload_json = ?, updated_at = ?
+       WHERE annotation_id = ? AND project_id = ?`
+    )
+      .bind("hidden", JSON.stringify(nextPayload), now, annotationId, projectId)
+      .run();
+
+    if (!result.success || (result.meta?.changes ?? 0) < 1) return c.json({ ok: false, error: "Annotation not found." }, 404);
+    return c.json({ ok: true, annotationId, status: "hidden", updatedAt: now });
+  }
+);
 
 documentsRouter.post("/projects/:projectId/files/init", requireProjectRole("collaborator"), async (c) => {
   const projectId = c.req.param("projectId");
@@ -384,13 +821,13 @@ documentsRouter.get("/projects/:projectId", async (c) => {
   const role = c.get("projectRole");
 
   const rows = await c.env.DB.prepare(
-    `SELECT d.id, d.title, d.status, d.folder_id, d.current_version_id, d.created_at, d.updated_at
+    `SELECT d.document_id AS id, d.title, d.status, d.folder_id, d.current_version_id, d.created_at, d.updated_at
      FROM documents d
-     LEFT JOIN doc_folders df
-       ON df.folder_id = d.folder_id
+     LEFT JOIN folders df
+       ON df.id = d.folder_id
       AND df.project_id = d.project_id
      WHERE d.project_id = ?
-       AND d.status != 'DELETED'
+       AND d.status != 'deleted'
        AND (
          NOT EXISTS (
            SELECT 1
@@ -402,8 +839,8 @@ documentsRouter.get("/projects/:projectId", async (c) => {
          OR EXISTS (
            SELECT 1
            FROM doc_folder_permissions p
-           JOIN doc_folders pf
-             ON pf.folder_id = p.folder_id
+           JOIN folders pf
+             ON pf.id = p.folder_id
             AND pf.project_id = p.project_id
            WHERE p.project_id = d.project_id
              AND p.user_id = ?
@@ -418,7 +855,7 @@ documentsRouter.get("/projects/:projectId", async (c) => {
            JOIN lists l0
              ON l0.list_id = ld0.list_id
             AND l0.project_id = d.project_id
-           WHERE ld0.document_id = d.id
+           WHERE ld0.document_id = d.document_id
          )
          OR EXISTS (
            SELECT 1
@@ -429,18 +866,18 @@ documentsRouter.get("/projects/:projectId", async (c) => {
            LEFT JOIN list_memberships lm
              ON lm.list_id = l.list_id
             AND lm.user_id = ?
-           WHERE ld.document_id = d.id
+           WHERE ld.document_id = d.document_id
              AND (
                l.visibility = 'public'
                OR (l.visibility = 'shared' AND lm.user_id IS NOT NULL)
-               OR (l.visibility = 'private' AND (lm.user_id IS NOT NULL OR l.created_by_user_id = ?))
+               OR (l.visibility = 'private' AND lm.user_id IS NOT NULL)
              )
          )
        )
      ORDER BY d.updated_at DESC
      LIMIT 200`
   )
-    .bind(projectId, auth.user_id, auth.user_id, auth.user_id, auth.user_id)
+    .bind(projectId, auth.user_id, auth.user_id, auth.user_id)
     .all();
 
   return c.json({ ok: true, projectId, role, documents: rows.results ?? [] });
@@ -476,8 +913,8 @@ documentsRouter.post("/projects/:projectId", requireProjectRole("collaborator"),
   let folderId: string | null = null;
   if (typeof folderPath === "string" && folderPath.trim()) {
     const row = await c.env.DB.prepare(
-      `SELECT folder_id
-       FROM doc_folders
+      `SELECT id AS folder_id
+       FROM folders
        WHERE project_id = ? AND path = ?
        LIMIT 1`
     )
@@ -485,7 +922,7 @@ documentsRouter.post("/projects/:projectId", requireProjectRole("collaborator"),
       .first<{ folder_id: string }>();
 
     if (!row?.folder_id) {
-      return c.json({ ok: false, error: "folderPath not found in doc_folders." }, 404);
+      return c.json({ ok: false, error: "folderPath not found in folders." }, 404);
     }
     folderId = row.folder_id;
   }
@@ -497,14 +934,14 @@ documentsRouter.post("/projects/:projectId", requireProjectRole("collaborator"),
   const contentType = typeof mimeType === "string" && mimeType.trim() ? mimeType.trim() : (uploaded.httpMetadata?.contentType || "application/octet-stream");
 
   await c.env.DB.prepare(
-    `INSERT INTO documents (id, tenant_id, project_id, folder_id, title, status, current_version_id, created_by_actor_id, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, 'ACTIVE', NULL, ?, ?, ?)`
+    `INSERT INTO documents (document_id, company_id, project_id, folder_id, title, status, current_version_id, created_by_actor_id, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, 'active', NULL, ?, ?, ?)`
   )
     .bind(docId, auth.company_id, projectId, folderId, rawName.trim(), actorId, now, now)
     .run();
 
   await c.env.DB.prepare(
-    `INSERT INTO document_versions (id, tenant_id, project_id, document_id, version_number, r2_key, mime_type, byte_size, created_by_actor_id, created_at)
+    `INSERT INTO document_versions (document_version_id, company_id, project_id, document_id, version_number, r2_key, mime_type, byte_size, created_by_actor_id, created_at)
      VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, ?)`
   )
     .bind(revisionId, auth.company_id, projectId, docId, objectKey, contentType, uploaded.size, actorId, now)
@@ -513,7 +950,7 @@ documentsRouter.post("/projects/:projectId", requireProjectRole("collaborator"),
   await c.env.DB.prepare(
     `UPDATE documents
      SET current_version_id = ?, updated_at = ?
-     WHERE id = ?`
+     WHERE document_id = ?`
   )
     .bind(revisionId, now, docId)
     .run();
@@ -546,15 +983,15 @@ documentsRouter.post("/:documentId/revisions", async (c) => {
   }
 
   const doc = await c.env.DB.prepare(
-    `SELECT id, project_id, tenant_id, status
-     FROM documents
-     WHERE id = ?
+    `SELECT d.document_id AS id, d.project_id, d.company_id, d.status
+     FROM documents d
+     WHERE d.document_id = ?
      LIMIT 1`
   )
     .bind(documentId)
-    .first<{ id: string; project_id: string; tenant_id: string; status: string }>();
+    .first<{ id: string; project_id: string; company_id: string; status: string }>();
 
-  if (!doc || doc.status === "DELETED") return c.json({ ok: false, error: "Document not found." }, 404);
+  if (!doc || doc.status === "deleted") return c.json({ ok: false, error: "Document not found." }, 404);
 
   const membership = await c.env.DB.prepare(
     `SELECT role
@@ -590,16 +1027,16 @@ documentsRouter.post("/:documentId/revisions", async (c) => {
   const contentType = typeof mimeType === "string" && mimeType.trim() ? mimeType.trim() : (uploaded.httpMetadata?.contentType || "application/octet-stream");
 
   await c.env.DB.prepare(
-    `INSERT INTO document_versions (id, tenant_id, project_id, document_id, version_number, r2_key, mime_type, byte_size, created_by_actor_id, created_at)
+    `INSERT INTO document_versions (document_version_id, company_id, project_id, document_id, version_number, r2_key, mime_type, byte_size, created_by_actor_id, created_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   )
-    .bind(revisionId, doc.tenant_id, doc.project_id, documentId, nextVersion, objectKey, contentType, uploaded.size, actorId, now)
+    .bind(revisionId, doc.company_id, doc.project_id, documentId, nextVersion, objectKey, contentType, uploaded.size, actorId, now)
     .run();
 
   await c.env.DB.prepare(
     `UPDATE documents
      SET current_version_id = ?, updated_at = ?
-     WHERE id = ?`
+     WHERE document_id = ?`
   )
     .bind(revisionId, now, documentId)
     .run();
@@ -622,15 +1059,14 @@ documentsRouter.get("/:documentId", async (c) => {
   const documentId = c.req.param("documentId");
 
   const doc = await c.env.DB.prepare(
-    `SELECT id, tenant_id, project_id, folder_id, title, status, current_version_id, created_at, updated_at
+    `SELECT document_id AS id, project_id, folder_id, title, status, current_version_id, created_at, updated_at
      FROM documents
-     WHERE id = ?
+     WHERE document_id = ?
      LIMIT 1`
   )
     .bind(documentId)
     .first<{
       id: string;
-      tenant_id: string;
       project_id: string;
       folder_id: string | null;
       title: string;
@@ -640,7 +1076,7 @@ documentsRouter.get("/:documentId", async (c) => {
       updated_at: string;
     }>();
 
-  if (!doc || doc.status === "DELETED") return c.json({ ok: false, error: "Document not found." }, 404);
+  if (!doc || doc.status === "deleted") return c.json({ ok: false, error: "Document not found." }, 404);
 
   const membership = await c.env.DB.prepare(
     `SELECT role
@@ -659,10 +1095,10 @@ documentsRouter.get("/:documentId", async (c) => {
   if (!allowed) return c.json({ ok: false, error: "No document access (folder/list policy)." }, 403);
 
   const revision = doc.current_version_id
-    ? await c.env.DB.prepare(
-        `SELECT id, version_number, r2_key, mime_type, byte_size, created_at
+      ? await c.env.DB.prepare(
+        `SELECT document_version_id AS id, version_number, r2_key, mime_type, byte_size, created_at
          FROM document_versions
-         WHERE id = ?
+         WHERE document_version_id = ?
          LIMIT 1`
       )
         .bind(doc.current_version_id)
@@ -683,15 +1119,15 @@ documentsRouter.get("/:documentId/download", async (c) => {
   const documentId = c.req.param("documentId");
 
   const doc = await c.env.DB.prepare(
-    `SELECT id, project_id, status
+    `SELECT document_id AS id, project_id, status
      FROM documents
-     WHERE id = ?
+     WHERE document_id = ?
      LIMIT 1`
   )
     .bind(documentId)
     .first<{ id: string; project_id: string; status: string }>();
 
-  if (!doc || doc.status === "DELETED") return c.json({ ok: false, error: "Document not found." }, 404);
+  if (!doc || doc.status === "deleted") return c.json({ ok: false, error: "Document not found." }, 404);
 
   const membership = await c.env.DB.prepare(
     `SELECT role
