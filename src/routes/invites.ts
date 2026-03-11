@@ -21,6 +21,17 @@ function tokenHex(bytes = 32) {
 
 export const invitesRouter = new Hono<AppEnv>();
 
+async function ensureUserActor(c: { env: AppEnv["Bindings"] }, userId: string, companyId: string) {
+  const actorId = `user_${userId}`;
+  await c.env.DB.prepare(
+    `INSERT OR IGNORE INTO actors (id, company_id, type, label, created_at)
+     VALUES (?, ?, 'user', ?, datetime('now'))`
+  )
+    .bind(actorId, companyId, `user:${userId}`)
+    .run();
+  return actorId;
+}
+
 invitesRouter.get("/", async (c) => {
   const auth = c.get("auth");
   const scopeType = c.req.query("scopeType");
@@ -97,13 +108,38 @@ invitesRouter.post("/", async (c) => {
     }
   }
 
+  let companyId: string | null = null;
+  if (scopeType === "company") {
+    companyId = scopeId.trim();
+  } else if (scopeType === "project") {
+    const row = await c.env.DB.prepare("SELECT company_id FROM projects WHERE project_id = ? LIMIT 1")
+      .bind(scopeId.trim())
+      .first<{ company_id: string }>();
+    companyId = row?.company_id ?? null;
+  } else if (scopeType === "list") {
+    const row = await c.env.DB.prepare(
+      `SELECT p.company_id
+       FROM lists l
+       JOIN projects p ON p.project_id = l.project_id
+       WHERE l.list_id = ?
+       LIMIT 1`
+    )
+      .bind(scopeId.trim())
+      .first<{ company_id: string }>();
+    companyId = row?.company_id ?? null;
+  }
+  if (!companyId) {
+    return c.json({ ok: false, error: "Unable to resolve company for invite scope." }, 404);
+  }
+  const inviterActorId = await ensureUserActor(c, auth.user_id, companyId);
+
   const rawToken = tokenHex(32);
   const tokenHash = await sha256Hex(rawToken);
   const expiresAt = new Date(Date.now() + Math.max(1, expiresDays) * 86400000).toISOString();
 
   await c.env.DB.prepare(
     `INSERT INTO invite_tokens (
-      invite_id, scope_type, scope_id, email, role, token_hash, invited_by_user_id, expires_at, created_at
+      invite_id, scope_type, scope_id, email, role, token_hash, invited_by_actor_id, expires_at, created_at
      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
   )
     .bind(
@@ -113,7 +149,7 @@ invitesRouter.post("/", async (c) => {
       email.toLowerCase().trim(),
       role.trim(),
       tokenHash,
-      auth.user_id,
+      inviterActorId,
       expiresAt,
       new Date().toISOString()
     )
@@ -147,7 +183,7 @@ invitesRouter.post("/accept", async (c) => {
 
   const tokenHash = await sha256Hex(token.trim());
   const invite = await c.env.DB.prepare(
-    `SELECT invite_id, scope_type, scope_id, email, role, expires_at, accepted_at, revoked_at
+    `SELECT invite_id, scope_type, scope_id, email, role, invited_by_actor_id, expires_at, accepted_at, revoked_at
      FROM invite_tokens
      WHERE token_hash = ?
      LIMIT 1`
@@ -159,6 +195,7 @@ invitesRouter.post("/accept", async (c) => {
       scope_id: string;
       email: string;
       role: string;
+      invited_by_actor_id: string;
       expires_at: string;
       accepted_at: string | null;
       revoked_at: string | null;
@@ -174,22 +211,22 @@ invitesRouter.post("/accept", async (c) => {
   if (invite.scope_type === "company") {
     await c.env.DB.prepare(
       `INSERT INTO company_memberships (
-         company_membership_id, company_id, user_id, role, status, joined_at, created_at
-       ) VALUES (?, ?, ?, ?, 'active', ?, ?)
+         company_membership_id, company_id, user_id, role, status, invited_by_actor_id, joined_at, created_at
+       ) VALUES (?, ?, ?, ?, 'active', ?, ?, ?)
        ON CONFLICT(company_id, user_id)
        DO UPDATE SET role = excluded.role, status = 'active', joined_at = excluded.joined_at`
     )
-      .bind(`cm_${crypto.randomUUID()}`, invite.scope_id, auth.user_id, invite.role, now, now)
+      .bind(`cm_${crypto.randomUUID()}`, invite.scope_id, auth.user_id, invite.role, invite.invited_by_actor_id, now, now)
       .run();
   } else if (invite.scope_type === "project") {
     await c.env.DB.prepare(
       `INSERT INTO project_memberships (
-         project_membership_id, project_id, user_id, role, status, joined_at, created_at
-       ) VALUES (?, ?, ?, ?, 'active', ?, ?)
+         project_membership_id, project_id, user_id, role, status, invited_by_actor_id, joined_at, created_at
+       ) VALUES (?, ?, ?, ?, 'active', ?, ?, ?)
        ON CONFLICT(project_id, user_id)
        DO UPDATE SET role = excluded.role, status = 'active', joined_at = excluded.joined_at`
     )
-      .bind(`pm_${crypto.randomUUID()}`, invite.scope_id, auth.user_id, invite.role, now, now)
+      .bind(`pm_${crypto.randomUUID()}`, invite.scope_id, auth.user_id, invite.role, invite.invited_by_actor_id, now, now)
       .run();
   } else if (invite.scope_type === "list") {
     await c.env.DB.prepare(

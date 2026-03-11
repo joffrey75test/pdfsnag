@@ -2,7 +2,7 @@ import { SignJWT, jwtVerify } from "jose";
 import type { MiddlewareHandler } from "hono";
 import type { AppEnv } from "./db";
 
-const PBKDF2_ITERATIONS = 120000;
+const PBKDF2_ITERATIONS = 100000;
 const PBKDF2_KEY_BYTES = 32;
 
 function isObject(value: unknown): value is Record<string, unknown> {

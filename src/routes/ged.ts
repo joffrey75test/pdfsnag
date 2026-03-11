@@ -41,7 +41,7 @@ function requireWrite(c: { get: (key: "scope") => Scope }) {
 async function audit(
   c: {
     env: AppEnv["Bindings"];
-    get: (key: "tenantId" | "projectId" | "actorId") => string;
+    get: (key: "companyId" | "projectId" | "actorId") => string;
   },
   action: string,
   entityType: string,
@@ -49,12 +49,12 @@ async function audit(
   meta?: unknown
 ) {
   await c.env.DB.prepare(
-    `INSERT INTO audit_events (id, tenant_id, project_id, actor_id, action, entity_type, entity_id, metadata_json)
+    `INSERT INTO audit_events (id, company_id, project_id, actor_id, action, entity_type, entity_id, metadata_json)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
   )
     .bind(
       uuid(),
-      c.get("tenantId"),
+      c.get("companyId"),
       c.get("projectId"),
       c.get("actorId"),
       action,
@@ -85,8 +85,8 @@ gedRouter.get("/documents/download/:token", async (c) => {
   const row = await c.env.DB.prepare(
     `SELECT d.title, v.r2_key, v.mime_type
      FROM documents d
-     JOIN document_versions v ON v.id = d.current_version_id
-     WHERE d.id = ? AND d.project_id = ? AND d.status != 'DELETED'
+     JOIN document_versions v ON v.document_version_id = d.current_version_id
+     WHERE d.document_id = ? AND d.project_id = ? AND d.status != 'deleted'
      LIMIT 1`
   )
     .bind(payload.documentId, payload.projectId)
@@ -109,8 +109,8 @@ gedRouter.get("/documents/download/:token", async (c) => {
 
 // Auth middleware (project token)
 gedRouter.use("/projects/:projectId/*", async (c, next) => {
-  const tenantId = c.req.header("x-tenant-id");
-  if (!tenantId) return c.json({ error: "missing x-tenant-id" }, 400);
+  const companyId = c.req.header("x-company-id");
+  if (!companyId) return c.json({ error: "missing x-company-id" }, 400);
 
   const projectId = c.req.param("projectId");
 
@@ -124,10 +124,10 @@ gedRouter.use("/projects/:projectId/*", async (c, next) => {
   const row = await c.env.DB.prepare(
     `SELECT scope, actor_id, expires_at, revoked_at
      FROM project_tokens
-     WHERE tenant_id = ? AND project_id = ? AND token_hash = ?
+     WHERE company_id = ? AND project_id = ? AND token_hash = ?
      LIMIT 1`
   )
-    .bind(tenantId, projectId, tokenHash)
+    .bind(companyId, projectId, tokenHash)
     .first<{ scope: Scope; actor_id: string; expires_at: string | null; revoked_at: string | null }>();
 
   if (!row) return c.json({ error: "invalid token" }, 401);
@@ -136,11 +136,11 @@ gedRouter.use("/projects/:projectId/*", async (c, next) => {
     return c.json({ error: "token expired" }, 401);
   }
 
-  await c.env.DB.prepare("UPDATE project_tokens SET last_used_at = datetime('now') WHERE tenant_id = ? AND project_id = ? AND token_hash = ?")
-    .bind(tenantId, projectId, tokenHash)
+  await c.env.DB.prepare("UPDATE project_tokens SET last_used_at = datetime('now') WHERE company_id = ? AND project_id = ? AND token_hash = ?")
+    .bind(companyId, projectId, tokenHash)
     .run();
 
-  c.set("tenantId", tenantId);
+  c.set("companyId", companyId);
   c.set("projectId", projectId);
   c.set("scope", row.scope);
   c.set("actorId", row.actor_id);
@@ -153,12 +153,12 @@ gedRouter.get("/projects/:projectId/folders", async (c) => {
   const parentId = c.req.query("parentId") ?? null;
 
   const rows = await c.env.DB.prepare(
-    `SELECT id, parent_id, name, created_at
+    `SELECT id, parent_id, path, name, created_at
      FROM folders
-     WHERE tenant_id = ? AND project_id = ? AND (parent_id IS ? OR parent_id = ?)
+     WHERE company_id = ? AND project_id = ? AND (parent_id IS ? OR parent_id = ?)
      ORDER BY name ASC`
   )
-    .bind(c.get("tenantId"), c.get("projectId"), parentId, parentId)
+    .bind(c.get("companyId"), c.get("projectId"), parentId, parentId)
     .all();
 
   return c.json(rows.results ?? []);
@@ -180,35 +180,32 @@ gedRouter.post("/projects/:projectId/folders", async (c) => {
 
   const id = uuid();
   const safeName = name.trim();
-  await c.env.DB.prepare(
-    `INSERT INTO folders (id, tenant_id, project_id, parent_id, name, created_by_actor_id)
-     VALUES (?, ?, ?, ?, ?, ?)`
-  )
-    .bind(id, c.get("tenantId"), c.get("projectId"), parentId ?? null, safeName, c.get("actorId"))
-    .run();
-
   const segment = sanitizeFolderSegment(safeName);
   let path = `/${segment}/`;
   if (isNonEmptyString(parentId)) {
     const parent = await c.env.DB.prepare(
       `SELECT path
-       FROM doc_folders
-       WHERE folder_id = ? AND project_id = ?
+       FROM folders
+       WHERE id = ? AND project_id = ?
        LIMIT 1`
     )
       .bind(parentId, c.get("projectId"))
       .first<{ path: string }>();
-
-    if (parent?.path) {
-      path = `${parent.path}${segment}/`;
-    }
+    if (parent?.path) path = `${parent.path}${segment}/`;
   }
-
   await c.env.DB.prepare(
-    `INSERT OR IGNORE INTO doc_folders (folder_id, project_id, path, created_at)
-     VALUES (?, ?, ?, datetime('now'))`
+    `INSERT INTO folders (id, company_id, project_id, parent_id, path, name, created_by_actor_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`
   )
-    .bind(id, c.get("projectId"), path)
+    .bind(
+      id,
+      c.get("companyId"),
+      c.get("projectId"),
+      parentId ?? null,
+      path,
+      safeName,
+      c.get("actorId")
+    )
     .run();
 
   await audit(c, "FOLDER_CREATE", "folder", id, { name: safeName, parentId: parentId ?? null, path });
@@ -223,9 +220,9 @@ gedRouter.get("/projects/:projectId/documents", async (c) => {
   const parsedLimit = Number(c.req.query("limit") ?? 50);
   const limit = Number.isFinite(parsedLimit) && parsedLimit > 0 ? Math.min(parsedLimit, 200) : 50;
 
-  const params: unknown[] = [c.get("tenantId"), c.get("projectId")];
+  const params: unknown[] = [c.get("projectId")];
 
-  let where = "WHERE tenant_id = ? AND project_id = ? AND status != 'DELETED'";
+  let where = "WHERE project_id = ? AND status != 'deleted'";
   if (folderId) {
     where += " AND folder_id = ?";
     params.push(folderId);
@@ -238,7 +235,7 @@ gedRouter.get("/projects/:projectId/documents", async (c) => {
   }
 
   const rows = await c.env.DB.prepare(
-    `SELECT id, folder_id, title, status, current_version_id, created_at, updated_at
+    `SELECT document_id AS id, folder_id, title, status, current_version_id, created_at, updated_at
      FROM documents
      ${where}
      ORDER BY updated_at DESC
@@ -267,35 +264,35 @@ gedRouter.post("/projects/:projectId/documents", async (c) => {
 
   const mimeType = isNonEmptyString(mimeTypeRaw) ? mimeTypeRaw : "application/pdf";
 
-  const tenantId = c.get("tenantId");
+  const companyId = c.get("companyId");
   const projectId = c.get("projectId");
   const actorId = c.get("actorId");
 
   const docId = uuid();
   const verId = uuid();
   const safeTitle = title.trim();
-  const r2Key = `t/${tenantId}/p/${projectId}/d/${docId}/v/${verId}.pdf`;
+  const r2Key = `c/${companyId}/p/${projectId}/d/${docId}/v/${verId}.pdf`;
 
   await c.env.DB.prepare(
-    `INSERT INTO documents (id, tenant_id, project_id, folder_id, title, status, current_version_id, created_by_actor_id)
-     VALUES (?, ?, ?, ?, ?, 'ACTIVE', NULL, ?)`
+    `INSERT INTO documents (document_id, company_id, project_id, folder_id, title, status, current_version_id, created_by_actor_id)
+     VALUES (?, ?, ?, ?, ?, 'active', NULL, ?)`
   )
-    .bind(docId, tenantId, projectId, folderId ?? null, safeTitle, actorId)
+    .bind(docId, companyId, projectId, folderId ?? null, safeTitle, actorId)
     .run();
 
   await c.env.DB.prepare(
-    `INSERT INTO document_versions (id, tenant_id, project_id, document_id, version_number, r2_key, mime_type, byte_size, created_by_actor_id)
+    `INSERT INTO document_versions (document_version_id, company_id, project_id, document_id, version_number, r2_key, mime_type, byte_size, created_by_actor_id)
      VALUES (?, ?, ?, ?, 1, ?, ?, 0, ?)`
   )
-    .bind(verId, tenantId, projectId, docId, r2Key, mimeType, actorId)
+    .bind(verId, companyId, projectId, docId, r2Key, mimeType, actorId)
     .run();
 
   await c.env.DB.prepare(
     `UPDATE documents
      SET current_version_id = ?, updated_at = datetime('now')
-     WHERE id = ? AND tenant_id = ? AND project_id = ?`
+     WHERE document_id = ? AND project_id = ?`
   )
-    .bind(verId, docId, tenantId, projectId)
+    .bind(verId, docId, projectId)
     .run();
 
   await audit(c, "DOCUMENT_CREATE", "document", docId, { title: safeTitle, folderId: folderId ?? null, versionId: verId });
@@ -322,14 +319,14 @@ gedRouter.put("/projects/:projectId/documents/:docId/versions/:verId/content", a
   if (!requireWrite(c)) return c.json({ error: "forbidden (write token required)" }, 403);
 
   const { docId, verId } = c.req.param();
-  const tenantId = c.get("tenantId");
+  const companyId = c.get("companyId");
   const projectId = c.get("projectId");
 
   const v = await c.env.DB.prepare(
-    `SELECT r2_key FROM document_versions
-     WHERE id = ? AND document_id = ? AND tenant_id = ? AND project_id = ?`
+     `SELECT r2_key FROM document_versions
+     WHERE document_version_id = ? AND document_id = ? AND company_id = ? AND project_id = ?`
   )
-    .bind(verId, docId, tenantId, projectId)
+    .bind(verId, docId, companyId, projectId)
     .first<{ r2_key: string }>();
 
   if (!v) return c.json({ error: "version not found" }, 404);
@@ -344,12 +341,12 @@ gedRouter.put("/projects/:projectId/documents/:docId/versions/:verId/content", a
 
   await getR2Bucket(c).put(v.r2_key, body, { httpMetadata: { contentType } });
 
-  await c.env.DB.prepare(`UPDATE document_versions SET mime_type = ?, byte_size = ? WHERE id = ?`)
+  await c.env.DB.prepare(`UPDATE document_versions SET mime_type = ?, byte_size = ? WHERE document_version_id = ?`)
     .bind(contentType, byteSize, verId)
     .run();
 
-  await c.env.DB.prepare(`UPDATE documents SET updated_at = datetime('now') WHERE id = ? AND tenant_id = ? AND project_id = ?`)
-    .bind(docId, tenantId, projectId)
+  await c.env.DB.prepare(`UPDATE documents SET updated_at = datetime('now') WHERE document_id = ? AND project_id = ?`)
+    .bind(docId, projectId)
     .run();
 
   await audit(c, "VERSION_UPLOAD", "document_version", verId, { docId, byteSize });
@@ -360,17 +357,16 @@ gedRouter.put("/projects/:projectId/documents/:docId/versions/:verId/content", a
 // download current version (proxy)
 gedRouter.get("/projects/:projectId/documents/:docId/content", async (c) => {
   const { docId } = c.req.param();
-  const tenantId = c.get("tenantId");
   const projectId = c.get("projectId");
 
   const row = await c.env.DB.prepare(
     `SELECT v.r2_key, v.mime_type
      FROM documents d
-     JOIN document_versions v ON v.id = d.current_version_id
-     WHERE d.id = ? AND d.tenant_id = ? AND d.project_id = ? AND d.status != 'DELETED'
+     JOIN document_versions v ON v.document_version_id = d.current_version_id
+     WHERE d.document_id = ? AND d.project_id = ? AND d.status != 'deleted'
      LIMIT 1`
   )
-    .bind(docId, tenantId, projectId)
+    .bind(docId, projectId)
     .first<{ r2_key: string; mime_type: string }>();
 
   if (!row) return c.json({ error: "not found" }, 404);
@@ -391,41 +387,41 @@ gedRouter.post("/projects/:projectId/documents/:docId/versions", async (c) => {
   if (!requireWrite(c)) return c.json({ error: "forbidden (write token required)" }, 403);
 
   const { docId } = c.req.param();
-  const tenantId = c.get("tenantId");
+  const companyId = c.get("companyId");
   const projectId = c.get("projectId");
   const actorId = c.get("actorId");
 
   const doc = await c.env.DB.prepare(
-    `SELECT id FROM documents WHERE id = ? AND tenant_id = ? AND project_id = ? AND status != 'DELETED'`
+    `SELECT document_id AS id FROM documents WHERE document_id = ? AND project_id = ? AND status != 'deleted'`
   )
-    .bind(docId, tenantId, projectId)
+    .bind(docId, projectId)
     .first();
 
   if (!doc) return c.json({ error: "document not found" }, 404);
 
   const maxRow = await c.env.DB.prepare(
-    `SELECT COALESCE(MAX(version_number), 0) AS maxv
+     `SELECT COALESCE(MAX(version_number), 0) AS maxv
      FROM document_versions
-     WHERE document_id = ? AND tenant_id = ? AND project_id = ?`
+     WHERE document_id = ? AND company_id = ? AND project_id = ?`
   )
-    .bind(docId, tenantId, projectId)
+    .bind(docId, companyId, projectId)
     .first<{ maxv: number }>();
 
   const nextV = (maxRow?.maxv ?? 0) + 1;
   const verId = uuid();
-  const r2Key = `t/${tenantId}/p/${projectId}/d/${docId}/v/${verId}.pdf`;
+  const r2Key = `c/${companyId}/p/${projectId}/d/${docId}/v/${verId}.pdf`;
 
   await c.env.DB.prepare(
-    `INSERT INTO document_versions (id, tenant_id, project_id, document_id, version_number, r2_key, mime_type, byte_size, created_by_actor_id)
+    `INSERT INTO document_versions (document_version_id, company_id, project_id, document_id, version_number, r2_key, mime_type, byte_size, created_by_actor_id)
      VALUES (?, ?, ?, ?, ?, ?, 'application/pdf', 0, ?)`
   )
-    .bind(verId, tenantId, projectId, docId, nextV, r2Key, actorId)
+    .bind(verId, companyId, projectId, docId, nextV, r2Key, actorId)
     .run();
 
   await c.env.DB.prepare(
-    `UPDATE documents SET current_version_id = ?, updated_at = datetime('now') WHERE id = ? AND tenant_id = ? AND project_id = ?`
+    `UPDATE documents SET current_version_id = ?, updated_at = datetime('now') WHERE document_id = ? AND project_id = ?`
   )
-    .bind(verId, docId, tenantId, projectId)
+    .bind(verId, docId, projectId)
     .run();
 
   await audit(c, "VERSION_CREATE", "document_version", verId, { docId, versionNumber: nextV });

@@ -56,10 +56,10 @@ tasksRouter.get("/projects/:projectId", async (c) => {
       status,
       priority,
       due_date,
-      assigned_to_user_id,
+     assigned_to_user_id,
       created_at,
       updated_at
-     FROM task
+     FROM tasks
      WHERE ${filters.join(" AND ")}
      ORDER BY updated_at DESC
      LIMIT ?`

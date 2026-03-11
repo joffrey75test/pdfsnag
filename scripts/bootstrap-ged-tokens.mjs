@@ -6,7 +6,7 @@ import { join } from "node:path";
 
 function parseArgs(argv) {
   const opts = {
-    tenant: "tenant_demo",
+    companyId: "tenant_demo",
     projectId: `proj_${randomUUID()}`,
     projectName: "Projet GED Demo",
     db: "snag_db",
@@ -16,7 +16,7 @@ function parseArgs(argv) {
 
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
-    if (arg === "--tenant") opts.tenant = argv[++i];
+    if (arg === "--company-id") opts.companyId = argv[++i];
     else if (arg === "--project-id") opts.projectId = argv[++i];
     else if (arg === "--project-name") opts.projectName = argv[++i];
     else if (arg === "--db") opts.db = argv[++i];
@@ -28,7 +28,7 @@ function parseArgs(argv) {
     }
   }
 
-  if (!opts.tenant || !opts.projectId || !opts.projectName || !opts.db) {
+  if (!opts.companyId || !opts.projectId || !opts.projectName || !opts.db) {
     throw new Error("Missing required options.");
   }
 
@@ -40,7 +40,7 @@ function printHelp() {
   node scripts/bootstrap-ged-tokens.mjs [options]
 
 Options:
-  --tenant <tenant_id>        Tenant id (default: tenant_demo)
+  --company-id <company_id>   Company id (default: tenant_demo)
   --project-id <project_id>   Project id (default: generated uuid)
   --project-name <name>       Project name (default: Projet GED Demo)
   --db <database_name>        D1 database name (default: snag_db)
@@ -72,25 +72,25 @@ function run() {
   const writeHash = sha256Hex(rawWriteToken);
   const readHash = sha256Hex(rawReadToken);
 
-  const tenant = sqlEscape(opts.tenant);
+  const companyId = sqlEscape(opts.companyId);
   const projectId = sqlEscape(opts.projectId);
   const projectName = sqlEscape(opts.projectName);
 
-  const sql = `INSERT OR IGNORE INTO projects (id, tenant_id, name) VALUES ('${projectId}', '${tenant}', '${projectName}');
+  const sql = `INSERT OR IGNORE INTO projects (project_id, company_id, name) VALUES ('${projectId}', '${companyId}', '${projectName}');
 
-INSERT INTO actors (id, tenant_id, type, label)
+INSERT INTO actors (id, company_id, type, label)
 VALUES
-  ('${sqlEscape(actorWriteId)}', '${tenant}', 'token', 'bootstrap-write-token'),
-  ('${sqlEscape(actorReadId)}', '${tenant}', 'token', 'bootstrap-read-token');
+  ('${sqlEscape(actorWriteId)}', '${companyId}', 'token', 'bootstrap-write-token'),
+  ('${sqlEscape(actorReadId)}', '${companyId}', 'token', 'bootstrap-read-token');
 
-INSERT INTO project_tokens (id, tenant_id, project_id, token_hash, scope, name, actor_id)
+INSERT INTO project_tokens (id, company_id, project_id, token_hash, scope, name, actor_id)
 VALUES
-  ('${sqlEscape(tokenWriteId)}', '${tenant}', '${projectId}', '${writeHash}', 'write', 'bootstrap-write', '${sqlEscape(actorWriteId)}'),
-  ('${sqlEscape(tokenReadId)}', '${tenant}', '${projectId}', '${readHash}', 'read', 'bootstrap-read', '${sqlEscape(actorReadId)}');
+  ('${sqlEscape(tokenWriteId)}', '${companyId}', '${projectId}', '${writeHash}', 'write', 'bootstrap-write', '${sqlEscape(actorWriteId)}'),
+  ('${sqlEscape(tokenReadId)}', '${companyId}', '${projectId}', '${readHash}', 'read', 'bootstrap-read', '${sqlEscape(actorReadId)}');
 `;
 
   console.log("\n=== GED Bootstrap (one-time secrets) ===");
-  console.log(`tenant_id: ${opts.tenant}`);
+  console.log(`company_id: ${opts.companyId}`);
   console.log(`project_id: ${opts.projectId}`);
   console.log("\nWRITE token (show once):");
   console.log(rawWriteToken);

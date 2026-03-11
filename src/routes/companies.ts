@@ -12,6 +12,17 @@ async function parseJson(c: { req: { json: () => Promise<unknown> } }) {
 
 export const companiesRouter = new Hono<AppEnv>();
 
+async function ensureUserActor(c: { env: AppEnv["Bindings"] }, userId: string, companyId: string) {
+  const actorId = `user_${userId}`;
+  await c.env.DB.prepare(
+    `INSERT OR IGNORE INTO actors (id, company_id, type, label, created_at)
+     VALUES (?, ?, 'user', ?, datetime('now'))`
+  )
+    .bind(actorId, companyId, `user:${userId}`)
+    .run();
+  return actorId;
+}
+
 companiesRouter.get("/me", async (c) => {
   const auth = c.get("auth");
 
@@ -58,14 +69,15 @@ companiesRouter.post("/:companyId/members", requireCompanyRole("admin"), async (
   }
 
   const now = new Date().toISOString();
+  const invitedByActorId = await ensureUserActor(c, auth.user_id, companyId);
   await c.env.DB.prepare(
     `INSERT INTO company_memberships (
-      company_membership_id, company_id, user_id, role, status, invited_by_user_id, invited_at, created_at
+      company_membership_id, company_id, user_id, role, status, invited_by_actor_id, invited_at, created_at
      ) VALUES (?, ?, ?, ?, 'invited', ?, ?, ?)
      ON CONFLICT(company_id, user_id)
-     DO UPDATE SET role = excluded.role, status = 'invited', invited_by_user_id = excluded.invited_by_user_id, invited_at = excluded.invited_at`
+     DO UPDATE SET role = excluded.role, status = 'invited', invited_by_actor_id = excluded.invited_by_actor_id, invited_at = excluded.invited_at`
   )
-    .bind(`cm_${crypto.randomUUID()}`, companyId, userId.trim(), String(role), auth.user_id, now, now)
+    .bind(`cm_${crypto.randomUUID()}`, companyId, userId.trim(), String(role), invitedByActorId, now, now)
     .run();
 
   return c.json({ ok: true, companyId, userId: userId.trim(), role, status: "invited" }, 201);
